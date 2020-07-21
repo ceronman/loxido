@@ -1,4 +1,6 @@
 use std::env;
+use std::io::{self, Write};
+use std::fs;
 
 type Value = f64;
 
@@ -159,21 +161,42 @@ fn interpret(chunk: Chunk) -> InterpreterResult {
     return vm.run();
 }
 
-fn main() {
-    let args: Vec<String> = env::args().map(|s| format!("\"{}\"", s)).collect();
-    println!("{}", args.join(", "));
+// TODO: Actually called interpret, but we have another function with that name for now.
+fn run_code(code: &str) {
+    println!("Running {}", code);
+}
 
-    let mut chunk = Chunk::new();
-    let index = chunk.add_constant(1.2);
-    chunk.write(Instruction::Constant(index), 124);
-    let index = chunk.add_constant(3.4);
-    chunk.write(Instruction::Constant(index), 124);
-    chunk.write(Instruction::Add, 124);
-    let index = chunk.add_constant(5.6);
-    chunk.write(Instruction::Constant(index), 124);
-    chunk.write(Instruction::Divide, 124);
-    chunk.write(Instruction::Negate, 124);
-    chunk.write(Instruction::Return, 123);
-    chunk.disassemble("test chunk");
-    interpret(chunk);
+fn repl() {
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)
+            .expect("Unable to read line from the REPL");
+        if line.len() == 0 {
+            break;
+        }
+        run_code(&line);
+    }
+}
+
+fn run_file(path: &str) {
+    let code = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) => {
+            eprint!("Unable to read file {}: {}", path, error);
+            std::process::exit(1);
+        }
+    };
+    run_code(&code);
+}
+
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    match args.len() {
+        1 => repl(),
+        2 => run_file(&args[1]),
+        _ => std::process::exit(64)
+    }
 }
