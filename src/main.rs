@@ -1,6 +1,7 @@
 use std::env;
-use std::io::{self, Write};
 use std::fs;
+use std::io::{self, Write};
+use std::process;
 
 type Value = f64;
 
@@ -139,7 +140,7 @@ impl Vm {
                 Instruction::Return => {
                     println!("{}", self.stack.pop().expect("emtpy stack!"));
                     return InterpreterResult::Ok;
-                },
+                }
 
                 Instruction::Add => self.binary_op(|a, b| a + b),
                 Instruction::Divide => self.binary_op(|a, b| a / b),
@@ -156,14 +157,120 @@ impl Vm {
     }
 }
 
+enum TokenType {
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    Comma,
+    Dot,
+    Minus,
+    Plus,
+    Semicolon,
+    Slash,
+    Star,
+
+    // One or two character tokens.
+    Bang,
+    BangEqual,
+    Equal,
+    EqualEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+
+    // Literals.
+    Identifier,
+    String,
+    Number,
+
+    // Keywords.
+    And,
+    Class,
+    Else,
+    False,
+    For,
+    Fun,
+    If,
+    Nil,
+    Or,
+    Print,
+    Return,
+    Super,
+    This,
+    True,
+    Var,
+    While,
+
+    Error,
+    Eof,
+}
+
+struct Token<'a> {
+    kind: TokenType,
+    line: usize,
+    lexeme: &'a str
+}
+
+struct Scanner<'a> {
+    code: &'a str,
+    start: usize,
+    current: usize,
+    line: usize,
+}
+
+impl<'a> Scanner<'a> {
+    fn new(code: &'a str) -> Scanner {
+        Scanner {
+            code,
+            start: 0,
+            current: 0,
+            line: 1,
+        }
+    }
+
+    fn scan_token(&mut self) -> Token {
+        self.start = self.current;
+        if self.is_at_end() {
+            self.make_token(TokenType::Eof)
+        } else {
+            self.error_token("Unexpected character.")
+        }
+    }
+
+    fn is_at_end(&self) -> bool {
+        return self.current >= self.code.len();
+    }
+
+    fn make_token(&self, kind: TokenType) -> Token {
+        Token {
+            kind,
+            lexeme: &self.code[self.start..self.current],
+            line: self.line,
+        }
+    }
+
+    fn error_token(&self, message: &'static str) -> Token {
+        Token {
+            kind: TokenType::Error,
+            lexeme: message,
+            line: self.line,
+        }
+    }
+}
+
 fn interpret(chunk: Chunk) -> InterpreterResult {
     let mut vm = Vm::new(chunk);
     return vm.run();
 }
 
+fn compile(code: &str) {}
+
 // TODO: Actually called interpret, but we have another function with that name for now.
-fn run_code(code: &str) {
-    println!("Running {}", code);
+fn run_code(code: &str) -> InterpreterResult {
+    compile(code);
+    return InterpreterResult::Ok;
 }
 
 fn repl() {
@@ -171,7 +278,8 @@ fn repl() {
         print!("> ");
         io::stdout().flush().unwrap();
         let mut line = String::new();
-        io::stdin().read_line(&mut line)
+        io::stdin()
+            .read_line(&mut line)
             .expect("Unable to read line from the REPL");
         if line.len() == 0 {
             break;
@@ -185,18 +293,21 @@ fn run_file(path: &str) {
         Ok(content) => content,
         Err(error) => {
             eprint!("Unable to read file {}: {}", path, error);
-            std::process::exit(1);
+            process::exit(74);
         }
     };
-    run_code(&code);
-}
 
+    match run_code(&code) {
+        InterpreterResult::Ok => process::exit(65),
+        _ => process::exit(70),
+    };
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => repl(),
         2 => run_file(&args[1]),
-        _ => std::process::exit(64)
+        _ => process::exit(64),
     }
 }
