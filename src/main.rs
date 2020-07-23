@@ -233,10 +233,33 @@ impl<'a> Scanner<'a> {
     fn scan_token(&mut self) -> Token {
         self.start = self.current;
         if self.is_at_end() {
-            self.make_token(TokenType::Eof)
-        } else {
-            self.error_token("Unexpected character.")
+            return self.make_token(TokenType::Eof)
         }
+
+        let c = self.advance();
+
+        match c {
+            b'(' => self.make_token(TokenType::LeftParen),
+            b')' => self.make_token(TokenType::RightParen),
+            b'{' => self.make_token(TokenType::LeftBrace),
+            b'}' => self.make_token(TokenType::RightBrace),
+            b';' => self.make_token(TokenType::Semicolon),
+            b',' => self.make_token(TokenType::Comma),
+            b'.' => self.make_token(TokenType::Dot),
+            b'-' => self.make_token(TokenType::Minus),
+            b'+' => self.make_token(TokenType::Plus),
+            b'/' => self.make_token(TokenType::Slash),
+            b'*' => self.make_token(TokenType::Star),
+            b'!' if self.matches(b'=') => self.make_token(TokenType::BangEqual),
+            b'!' => self.make_token(TokenType::Bang),
+            b'=' if self.matches(b'=') => self.make_token(TokenType::EqualEqual),
+            b'=' => self.make_token(TokenType::Equal),
+            b'<' if self.matches(b'=') => self.make_token(TokenType::LessEqual),
+            b'<' => self.make_token(TokenType::Less),
+            b'>' if self.matches(b'=') => self.make_token(TokenType::GreaterEqual),
+            b'>' => self.make_token(TokenType::Greater),
+            _ => self.error_token("Unexpected character.")
+        }   
     }
 
     fn is_at_end(&self) -> bool {
@@ -256,6 +279,23 @@ impl<'a> Scanner<'a> {
             kind: TokenType::Error,
             lexeme: message,
             line: self.line,
+        }
+    }
+
+    fn advance(&mut self) -> u8 {
+        let char = self.code.as_bytes()[self.current];
+        self.current += 1;
+        char
+    }
+
+    fn matches(&mut self, expected: u8) -> bool {
+        if self.is_at_end() {
+            false
+        } else if self.code.as_bytes()[self.current] != expected {
+            false
+        } else {
+            self.current +=1;
+            true
         }
     }
 }
