@@ -231,14 +231,13 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_token(&mut self) -> Token {
+        self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
             return self.make_token(TokenType::Eof)
         }
 
-        let c = self.advance();
-
-        match c {
+        match self.advance() {
             b'(' => self.make_token(TokenType::LeftParen),
             b')' => self.make_token(TokenType::RightParen),
             b'{' => self.make_token(TokenType::LeftBrace),
@@ -258,12 +257,13 @@ impl<'a> Scanner<'a> {
             b'<' => self.make_token(TokenType::Less),
             b'>' if self.matches(b'=') => self.make_token(TokenType::GreaterEqual),
             b'>' => self.make_token(TokenType::Greater),
+            b'"' => self.string(),
             _ => self.error_token("Unexpected character.")
         }   
     }
 
     fn is_at_end(&self) -> bool {
-        return self.current >= self.code.len();
+        return self.current == self.code.len() - 1;
     }
 
     fn make_token(&self, kind: TokenType) -> Token {
@@ -271,6 +271,18 @@ impl<'a> Scanner<'a> {
             kind,
             lexeme: &self.code[self.start..self.current],
             line: self.line,
+        }
+    }
+
+    fn peek(&self) -> u8 {
+        self.code.as_bytes()[self.current]
+    }
+
+    fn peek_next(&self) -> u8 {
+        if self.is_at_end() {
+            b'\0'
+        } else {
+            self.code.as_bytes()[self.current + 1]
         }
     }
 
@@ -283,7 +295,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> u8 {
-        let char = self.code.as_bytes()[self.current];
+        let char = self.peek();
         self.current += 1;
         char
     }
@@ -291,11 +303,44 @@ impl<'a> Scanner<'a> {
     fn matches(&mut self, expected: u8) -> bool {
         if self.is_at_end() {
             false
-        } else if self.code.as_bytes()[self.current] != expected {
+        } else if self.peek() != expected {
             false
         } else {
             self.current +=1;
             true
+        }
+    }
+
+    fn skip_whitespace(&mut self) {
+        loop {
+            match self.peek() {
+                b' ' | b'\r' | b'\t' => {
+                    self.advance();
+                },
+                b'\n' => {
+                    self.line += 1;
+                    self.advance();
+                },
+                b'/' if self.peek_next() == b'/' => {
+                    while self.peek() != b'\n' && !self.is_at_end() {
+                        self.advance();
+                    }
+                }
+                _ => return
+            }
+        }
+    }
+
+    fn string(&mut self) -> Token {
+        while self.peek() != b'"' && !self.is_at_end() {
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            self.error_token("Unterminated string.")
+        } else {
+            self.advance();
+            self.make_token(TokenType::String)
         }
     }
 }
