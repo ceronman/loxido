@@ -209,6 +209,7 @@ enum TokenType {
     Eof,
 }
 
+#[derive(Copy, Clone)]
 struct Token<'a> {
     kind: TokenType,
     line: usize,
@@ -253,7 +254,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn scan_token(&mut self) -> Token {
+    fn scan_token(&mut self) -> Token<'a> {
         self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
@@ -291,11 +292,11 @@ impl<'a> Scanner<'a> {
         return self.current == self.code.len() - 1;
     }
 
-    fn lexeme(&self) -> &str {
+    fn lexeme(&self) -> &'a str {
         &self.code[self.start..self.current]
     }
 
-    fn make_token(&self, kind: TokenType) -> Token {
+    fn make_token(&self, kind: TokenType) -> Token<'a> {
         Token {
             kind,
             lexeme: self.lexeme(),
@@ -315,7 +316,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn error_token(&self, message: &'static str) -> Token {
+    fn error_token(&self, message: &'static str) -> Token<'static> {
         Token {
             kind: TokenType::Error,
             lexeme: message,
@@ -360,7 +361,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Token<'a> {
         while self.peek() != b'"' && !self.is_at_end() {
             self.advance();
         }
@@ -373,7 +374,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Token<'a> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -388,7 +389,7 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenType::Number)
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Token<'a> {
         while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
@@ -411,33 +412,108 @@ fn is_alpha(c: u8) -> bool {
     (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
 }
 
-fn interpret(chunk: Chunk) -> InterpreterResult {
-    let mut vm = Vm::new(chunk);
-    return vm.run();
+struct Parser<'a> {
+    scanner: Scanner<'a>,
+    chunk: Chunk,
+    current: Token<'a>,
+    previous: Token<'a>,
+    had_error: bool,
+    panic_mode: bool,
 }
 
-fn compile(code: &str) {
-    let mut scanner = Scanner::new(code);
-    let mut line = 0;
-    loop {
-        let token = scanner.scan_token();
-        if token.line != line {
-            print!("{:>4} ", token.line);
-            line = token.line;
+impl<'a> Parser<'a> {
+    fn new(code: &'a str) -> Parser<'a> {
+        let t1 = Token {
+            kind: TokenType::Eof,
+            lexeme: "",
+            line: 1,
+        };
+
+        let t2 = Token {
+            kind: TokenType::Eof,
+            lexeme: "",
+            line: 1,
+        };
+
+        Parser {
+            scanner: Scanner::new(code),
+            chunk: Chunk::new(),
+            current: t1,
+            previous: t2,
+            had_error: false,
+            panic_mode: false,
+        }
+    }
+
+    fn advance(&mut self) {
+        self.previous = self.current;
+
+        loop {
+            self.current = self.scanner.scan_token();
+            if self.current.kind == TokenType::Error {
+                self.error_at_current(self.current.lexeme);
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn expression(&mut self) {}
+
+    fn consume(&mut self, expected: TokenType, msg: &str) {
+        if self.current.kind == expected {
+            self.advance();
+            return;
+        }
+
+        self.error_at_current(msg);
+    }
+
+    fn compile(&mut self) -> bool {
+        self.advance();
+        self.expression();
+        self.consume(TokenType::Eof, "Expect end of expression.");
+        self.emit(Instruction::Return);
+        return self.had_error;
+    }
+
+    fn error_at_current(&mut self, msg: &str) {
+        self.error_at(self.current, msg)
+    }
+
+    fn error(&mut self, msg: &str) {
+        self.error_at(self.previous, msg)
+    }
+
+    fn error_at(&mut self, token: Token, msg: &str) {
+        if self.panic_mode {
+            return;
+        }
+
+        self.had_error = true;
+        self.panic_mode = true;
+        eprint!("[line {}] Error", token.line);
+        if token.kind == TokenType::Eof {
+            eprint!(" at end");
         } else {
-            print!("   | ");
+            eprint!("at '{}'", token.lexeme);
         }
-        println!("{:2} {}", token.kind as u8, token.lexeme);
-        if TokenType::Eof == token.kind {
-            break;
-        }
+        eprintln!(": {}", msg);
+    }
+
+    fn emit(&mut self, instruction: Instruction) {
+        self.chunk.write(instruction, self.previous.line);
     }
 }
 
-// TODO: Actually called interpret, but we have another function with that name for now.
-fn run_code(code: &str) -> InterpreterResult {
-    compile(code);
-    return InterpreterResult::Ok;
+fn interpret(code: &str) -> InterpreterResult {
+    let mut parser = Parser::new(code);
+    let result = parser.compile();
+    if !result {
+        return InterpreterResult::CompileError;
+    }
+    let mut vm = Vm::new(parser.chunk);
+    return vm.run();
 }
 
 fn repl() {
@@ -451,7 +527,7 @@ fn repl() {
         if line.len() == 0 {
             break;
         }
-        run_code(&line);
+        interpret(&line);
     }
 }
 
@@ -464,7 +540,7 @@ fn run_file(path: &str) {
         }
     };
 
-    match run_code(&code) {
+    match interpret(&code) {
         InterpreterResult::Ok => process::exit(65),
         _ => process::exit(70),
     };
