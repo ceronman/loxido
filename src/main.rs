@@ -414,6 +414,38 @@ fn is_alpha(c: u8) -> bool {
     (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
 }
 
+enum Precedence {
+    None,
+    Assignment,  // =
+    Or,          // or
+    And,         // and
+    Equality,    // == !=
+    Comparison,  // < > <= >=
+    Term,        // + -
+    Factor,      // * /
+    Unary,       // ! -
+    Call,        // . ()
+    Primary
+}
+
+impl Precedence {
+    fn next(&self) -> Precedence {
+        match self {
+            Precedence::None =>  Precedence::Assignment,
+            Precedence::Assignment =>  Precedence::Or,
+            Precedence::Or =>  Precedence::And,
+            Precedence::And =>  Precedence::Equality,
+            Precedence::Equality =>  Precedence::Comparison,
+            Precedence::Comparison =>  Precedence::Term,
+            Precedence::Term =>  Precedence::Factor,
+            Precedence::Factor =>  Precedence::Unary,
+            Precedence::Unary => Precedence::Call,
+            Precedence::Call =>  Precedence::Primary,
+            Precedence::Primary =>  Precedence::None,
+        }
+    }
+}
+
 struct Parser<'a> {
     scanner: Scanner<'a>,
     chunk: Chunk,
@@ -455,7 +487,9 @@ impl<'a> Parser<'a> {
         return self.had_error;
     }
 
-    fn expression(&mut self) {}
+    fn expression(&mut self) {
+        self.parse_precedence(Precedence::Assignment);
+    }
 
     fn number(&mut self) {
         let value: f64 = self
@@ -464,6 +498,24 @@ impl<'a> Parser<'a> {
             .parse()
             .expect("Parsed value is not a double");
         self.emit_constant(value);
+    }
+
+    fn grouping(&mut self) {
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after expression.");
+    }
+
+    fn unary(&mut self) {
+        let operator = self.previous.kind;
+        self.parse_precedence(Precedence::Unary);
+        match operator {
+            TokenType::Minus => self.emit(Instruction::Negate),
+            _ => panic!("Invalid unary operator")
+        }
+    }
+
+    fn parse_precedence(&mut self, precedence: Precedence) {
+
     }
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
