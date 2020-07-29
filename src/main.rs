@@ -160,7 +160,7 @@ impl Vm {
     }
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Hash)]
 enum TokenType {
     LeftParen,
     RightParen,
@@ -416,32 +416,54 @@ fn is_alpha(c: u8) -> bool {
 
 enum Precedence {
     None,
-    Assignment,  // =
-    Or,          // or
-    And,         // and
-    Equality,    // == !=
-    Comparison,  // < > <= >=
-    Term,        // + -
-    Factor,      // * /
-    Unary,       // ! -
-    Call,        // . ()
-    Primary
+    Assignment, // =
+    Or,         // or
+    And,        // and
+    Equality,   // == !=
+    Comparison, // < > <= >=
+    Term,       // + -
+    Factor,     // * /
+    Unary,      // ! -
+    Call,       // . ()
+    Primary,
 }
 
 impl Precedence {
     fn next(&self) -> Precedence {
         match self {
-            Precedence::None =>  Precedence::Assignment,
-            Precedence::Assignment =>  Precedence::Or,
-            Precedence::Or =>  Precedence::And,
-            Precedence::And =>  Precedence::Equality,
-            Precedence::Equality =>  Precedence::Comparison,
-            Precedence::Comparison =>  Precedence::Term,
-            Precedence::Term =>  Precedence::Factor,
-            Precedence::Factor =>  Precedence::Unary,
+            Precedence::None => Precedence::Assignment,
+            Precedence::Assignment => Precedence::Or,
+            Precedence::Or => Precedence::And,
+            Precedence::And => Precedence::Equality,
+            Precedence::Equality => Precedence::Comparison,
+            Precedence::Comparison => Precedence::Term,
+            Precedence::Term => Precedence::Factor,
+            Precedence::Factor => Precedence::Unary,
             Precedence::Unary => Precedence::Call,
-            Precedence::Call =>  Precedence::Primary,
-            Precedence::Primary =>  Precedence::None,
+            Precedence::Call => Precedence::Primary,
+            Precedence::Primary => Precedence::None,
+        }
+    }
+}
+
+type ParseFn<'a> = fn(&mut Parser<'a>) -> ();
+
+struct ParseRule<'a> {
+    prefix: Option<ParseFn<'a>>,
+    infix: Option<ParseFn<'a>>,
+    precedence: Precedence,
+}
+
+impl<'a> ParseRule<'a> {
+    fn new(
+        prefix: Option<ParseFn<'a>>,
+        infix: Option<ParseFn<'a>>,
+        precedence: Precedence,
+    ) -> ParseRule<'a> {
+        ParseRule {
+            prefix,
+            infix,
+            precedence,
         }
     }
 }
@@ -453,6 +475,7 @@ struct Parser<'a> {
     previous: Token<'a>,
     had_error: bool,
     panic_mode: bool,
+    rules: HashMap<TokenType, ParseRule<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -469,6 +492,141 @@ impl<'a> Parser<'a> {
             line: 1,
         };
 
+        let mut rules = HashMap::new();
+        rules.insert(
+            TokenType::LeftParen,
+            ParseRule::new(Some(Parser::grouping), None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::RightParen,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::LeftBrace,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::RightBrace,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Comma,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(TokenType::Dot, ParseRule::new(None, None, Precedence::None));
+        rules.insert(
+            TokenType::Minus,
+            ParseRule::new(Some(Parser::unary), Some(Parser::binary), Precedence::Term),
+        );
+        rules.insert(
+            TokenType::Plus,
+            ParseRule::new(None, Some(Parser::binary), Precedence::Term),
+        );
+        rules.insert(
+            TokenType::Semicolon,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Slash,
+            ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
+        );
+        rules.insert(
+            TokenType::Star,
+            ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
+        );
+        rules.insert(
+            TokenType::Bang,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::BangEqual,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Equal,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::EqualEqual,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Greater,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::GreaterEqual,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Less,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::LessEqual,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Identifier,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::String,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Number,
+            ParseRule::new(Some(Parser::number), None, Precedence::None),
+        );
+        rules.insert(TokenType::And, ParseRule::new(None, None, Precedence::None));
+        rules.insert(
+            TokenType::Class,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Else,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::False,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(TokenType::For, ParseRule::new(None, None, Precedence::None));
+        rules.insert(TokenType::Fun, ParseRule::new(None, None, Precedence::None));
+        rules.insert(TokenType::If, ParseRule::new(None, None, Precedence::None));
+        rules.insert(TokenType::Nil, ParseRule::new(None, None, Precedence::None));
+        rules.insert(TokenType::Or, ParseRule::new(None, None, Precedence::None));
+        rules.insert(
+            TokenType::Print,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Return,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Super,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::This,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::True,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(TokenType::Var, ParseRule::new(None, None, Precedence::None));
+        rules.insert(
+            TokenType::While,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(
+            TokenType::Error,
+            ParseRule::new(None, None, Precedence::None),
+        );
+        rules.insert(TokenType::Eof, ParseRule::new(None, None, Precedence::None));
+
         Parser {
             scanner: Scanner::new(code),
             chunk: Chunk::new(),
@@ -476,6 +634,7 @@ impl<'a> Parser<'a> {
             previous: t2,
             had_error: false,
             panic_mode: false,
+            rules,
         }
     }
 
@@ -510,13 +669,13 @@ impl<'a> Parser<'a> {
         self.parse_precedence(Precedence::Unary);
         match operator {
             TokenType::Minus => self.emit(Instruction::Negate),
-            _ => panic!("Invalid unary operator")
+            _ => panic!("Invalid unary operator"),
         }
     }
 
-    fn parse_precedence(&mut self, precedence: Precedence) {
+    fn binary(&mut self) {}
 
-    }
+    fn parse_precedence(&mut self, precedence: Precedence) {}
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
         if self.current.kind == expected {
