@@ -414,7 +414,7 @@ fn is_alpha(c: u8) -> bool {
     (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum Precedence {
     None,
     Assignment, // =
@@ -586,6 +586,9 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
         self.emit(Instruction::Return);
+        if DEBUG && !self.had_error {
+            self.chunk.disassemble("code");
+        }
         return self.had_error;
     }
 
@@ -641,7 +644,6 @@ impl<'a> Parser<'a> {
                 return;
             }
         };
-
         prefix_rule(self);
         while self.is_lower_precedence(precedence) {
             self.advance();
@@ -652,7 +654,7 @@ impl<'a> Parser<'a> {
 
     fn is_lower_precedence(&self, precedence: Precedence) -> bool {
         let current_precedence = self.get_rule(self.current.kind).precedence;
-        (precedence as u8) < (current_precedence as u8)
+        (precedence as u8) <= (current_precedence as u8)
     }
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
