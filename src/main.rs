@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
@@ -10,7 +10,7 @@ use std::process;
 enum Value {
     Nil,
     Bool(bool),
-    Number(f64)
+    Number(f64),
 }
 
 impl fmt::Display for Value {
@@ -18,7 +18,7 @@ impl fmt::Display for Value {
         match self {
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
-            Value::Number(value) => write!(f, "{}", value)
+            Value::Number(value) => write!(f, "{}", value),
         }
     }
 }
@@ -37,7 +37,7 @@ enum Instruction {
     Substract,
     Nil,
     True,
-    False
+    False,
 }
 
 struct Chunk {
@@ -107,7 +107,7 @@ impl Chunk {
 
 enum LoxError {
     CompileError,
-    RuntimeError
+    RuntimeError,
 }
 
 struct Vm {
@@ -144,12 +144,12 @@ impl Vm {
             (Value::Number(value_a), Value::Number(value_b)) => {
                 self.push(Value::Number(f(value_a, value_b)));
                 Ok(())
-            },
+            }
             _ => {
                 self.runtime_error("Operands must be numbers.");
                 Err(LoxError::RuntimeError)
             }
-        }        
+        }
     }
 
     fn run(&mut self) -> Result<(), LoxError> {
@@ -602,17 +602,32 @@ impl<'a> Parser<'a> {
         rule(TokenType::And, None, None, Precedence::None);
         rule(TokenType::Class, None, None, Precedence::None);
         rule(TokenType::Else, None, None, Precedence::None);
-        rule(TokenType::False, Some(Parser::literal), None, Precedence::None);
+        rule(
+            TokenType::False,
+            Some(Parser::literal),
+            None,
+            Precedence::None,
+        );
         rule(TokenType::For, None, None, Precedence::None);
         rule(TokenType::Fun, None, None, Precedence::None);
         rule(TokenType::If, None, None, Precedence::None);
-        rule(TokenType::Nil, Some(Parser::literal), None, Precedence::None);
+        rule(
+            TokenType::Nil,
+            Some(Parser::literal),
+            None,
+            Precedence::None,
+        );
         rule(TokenType::Or, None, None, Precedence::None);
         rule(TokenType::Print, None, None, Precedence::None);
         rule(TokenType::Return, None, None, Precedence::None);
         rule(TokenType::Super, None, None, Precedence::None);
         rule(TokenType::This, None, None, Precedence::None);
-        rule(TokenType::True, Some(Parser::literal), None, Precedence::None);
+        rule(
+            TokenType::True,
+            Some(Parser::literal),
+            None,
+            Precedence::None,
+        );
         rule(TokenType::Var, None, None, Precedence::None);
         rule(TokenType::While, None, None, Precedence::None);
         rule(TokenType::Error, None, None, Precedence::None);
@@ -662,7 +677,7 @@ impl<'a> Parser<'a> {
             TokenType::False => self.emit(Instruction::False),
             TokenType::True => self.emit(Instruction::True),
             TokenType::Nil => self.emit(Instruction::Nil),
-            _ => panic!("Unreachable literal")
+            _ => panic!("Unreachable literal"),
         }
     }
 
