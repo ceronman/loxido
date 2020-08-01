@@ -1,11 +1,27 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::fmt;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
 
-type Value = f64;
+#[derive(Debug, Copy, Clone)]
+enum Value {
+    Nil,
+    Bool(bool),
+    Number(f64)
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Nil => write!(f, "nil"),
+            Value::Bool(value) => write!(f, "{}", value),
+            Value::Number(value) => write!(f, "{}", value)
+        }
+    }
+}
 
 // TODO: Investigate how to completely remove this at compile time.
 const DEBUG: bool = true;
@@ -83,11 +99,9 @@ impl Chunk {
     }
 }
 
-// TODO: Maybe just use standard Result?
-enum InterpreterResult {
-    Ok,
+enum LoxError {
     CompileError,
-    RuntimeError,
+    RuntimeError
 }
 
 struct Vm {
@@ -113,13 +127,26 @@ impl Vm {
         self.stack.pop().expect("Empty stack")
     }
 
-    fn binary_op(&mut self, f: fn(Value, Value) -> Value) {
-        let a = self.pop();
-        let b = self.pop();
-        self.push(f(a, b));
+    fn peek(&self) -> Value {
+        self.stack.last().cloned().expect("Empty stack")
     }
 
-    fn run(&mut self) -> InterpreterResult {
+    // TODO: Investigate macros for this
+    fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), LoxError> {
+        let operands = (self.pop(), self.pop());
+        match operands {
+            (Value::Number(value_a), Value::Number(value_b)) => {
+                self.push(Value::Number(f(value_a, value_b)));
+                Ok(())
+            },
+            _ => {
+                self.runtime_error("Operands must be numbers.");
+                Err(LoxError::RuntimeError)
+            }
+        }        
+    }
+
+    fn run(&mut self) -> Result<(), LoxError> {
         loop {
             let instruction = self.next_instruction();
             for value in self.stack.iter() {
@@ -132,24 +159,29 @@ impl Vm {
             match instruction {
                 Instruction::Constant(index) => {
                     let value = self.chunk.read_constant(index);
-                    self.stack.push(value);
+                    self.stack.push(value)
                 }
 
                 Instruction::Negate => {
-                    let value = self.pop();
-                    self.push(-value);
+                    if let Value::Number(value) = self.peek() {
+                        self.pop();
+                        self.push(Value::Number(-value));
+                    } else {
+                        self.runtime_error("Operand must be a number.");
+                        return Err(LoxError::RuntimeError);
+                    }
                 }
 
                 Instruction::Return => {
                     println!("{}", self.stack.pop().expect("emtpy stack!"));
-                    return InterpreterResult::Ok;
+                    return Ok(());
                 }
 
-                Instruction::Add => self.binary_op(|a, b| a + b),
-                Instruction::Divide => self.binary_op(|a, b| a / b),
-                Instruction::Multiply => self.binary_op(|a, b| a * b),
-                Instruction::Substract => self.binary_op(|a, b| a - b),
-            }
+                Instruction::Add => self.binary_op(|a, b| a + b)?,
+                Instruction::Divide => self.binary_op(|a, b| a / b)?,
+                Instruction::Multiply => self.binary_op(|a, b| a * b)?,
+                Instruction::Substract => self.binary_op(|a, b| a - b)?,
+            };
         }
     }
 
@@ -157,6 +189,12 @@ impl Vm {
         let instruction = self.chunk.code[self.ip];
         self.ip += 1;
         instruction
+    }
+
+    fn runtime_error(&mut self, msg: &str) {
+        eprintln!("{}", msg);
+        let line = self.chunk.lines[self.ip - 1];
+        eprintln!("[line {}] in script", line);
     }
 }
 
@@ -581,7 +619,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn compile(&mut self) -> bool {
+    fn compile(&mut self) -> Result<(), LoxError> {
         self.advance();
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
@@ -589,7 +627,11 @@ impl<'a> Parser<'a> {
         if DEBUG && !self.had_error {
             self.chunk.disassemble("code");
         }
-        return self.had_error;
+        if self.had_error {
+            Err(LoxError::CompileError)
+        } else {
+            Ok(())
+        }
     }
 
     fn expression(&mut self) {
@@ -602,7 +644,7 @@ impl<'a> Parser<'a> {
             .lexeme
             .parse()
             .expect("Parsed value is not a double");
-        self.emit_constant(value);
+        self.emit_constant(Value::Number(value));
     }
 
     fn grouping(&mut self) {
@@ -724,14 +766,11 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn interpret(code: &str) -> InterpreterResult {
+fn interpret(code: &str) -> Result<(), LoxError> {
     let mut parser = Parser::new(code);
-    let result = parser.compile();
-    if !result {
-        return InterpreterResult::CompileError;
-    }
+    parser.compile()?;
     let mut vm = Vm::new(parser.chunk);
-    return vm.run();
+    vm.run()
 }
 
 fn repl() {
@@ -745,7 +784,7 @@ fn repl() {
         if line.len() == 0 {
             break;
         }
-        interpret(&line);
+        let _ = interpret(&line);
     }
 }
 
@@ -759,7 +798,7 @@ fn run_file(path: &str) {
     };
 
     match interpret(&code) {
-        InterpreterResult::Ok => process::exit(65),
+        Ok(_) => process::exit(65),
         _ => process::exit(70),
     };
 }
