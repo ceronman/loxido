@@ -158,7 +158,7 @@ impl Vm {
     fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
-            (Value::Number(value_a), Value::Number(value_b)) => {
+            (Value::Number(value_b), Value::Number(value_a)) => {
                 self.push(Value::Number(f(value_a, value_b)));
                 Ok(())
             }
@@ -173,7 +173,7 @@ impl Vm {
     fn comparison_op(&mut self, f: fn(f64, f64) -> bool) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
-            (Value::Number(value_a), Value::Number(value_b)) => {
+            (Value::Number(value_b), Value::Number(value_a)) => {
                 self.push(Value::Bool(f(value_a, value_b)));
                 Ok(())
             }
@@ -188,8 +188,9 @@ impl Vm {
         loop {
             let instruction = self.next_instruction();
             for value in self.stack.iter() {
-                println!("[ {} ]", value)
+                print!("[{}]", value);
             }
+            println!("");
             if DEBUG {
                 self.chunk
                     .disassemble_instruction(&instruction, self.ip - 1);
@@ -536,6 +537,7 @@ impl Precedence {
 
 type ParseFn<'a> = fn(&mut Parser<'a>) -> ();
 
+#[derive(Copy, Clone)]
 struct ParseRule<'a> {
     prefix: Option<ParseFn<'a>>,
     infix: Option<ParseFn<'a>>,
@@ -622,48 +624,43 @@ impl<'a> Parser<'a> {
             Some(Parser::binary),
             Precedence::Factor,
         );
-        rule(TokenType::Bang, None, None, Precedence::None);
+        rule(TokenType::Bang, Some(Parser::unary), None, Precedence::None);
         rule(
             TokenType::BangEqual,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Equality,
         );
-        rule(
-            TokenType::Equal,
-            Some(Parser::unary),
-            None,
-            Precedence::None,
-        );
+        rule(TokenType::Equal, None, None, Precedence::None);
         rule(
             TokenType::EqualEqual,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Equality,
         );
         rule(
             TokenType::Greater,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Comparison,
         );
         rule(
             TokenType::GreaterEqual,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Comparison,
         );
         rule(
             TokenType::Less,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Comparison,
         );
         rule(
             TokenType::LessEqual,
             None,
             Some(Parser::binary),
-            Precedence::None,
+            Precedence::Comparison,
         );
         rule(TokenType::Identifier, None, None, Precedence::None);
         rule(TokenType::String, None, None, Precedence::None);
@@ -802,7 +799,9 @@ impl<'a> Parser<'a> {
                 return;
             }
         };
+
         prefix_rule(self);
+
         while self.is_lower_precedence(precedence) {
             self.advance();
             let infix_rule = self.get_rule(self.previous.kind).infix.unwrap();
@@ -882,8 +881,8 @@ impl<'a> Parser<'a> {
         self.emit(Instruction::Constant(index));
     }
 
-    fn get_rule(&self, kind: TokenType) -> &ParseRule<'a> {
-        self.rules.get(&kind).unwrap()
+    fn get_rule(&self, kind: TokenType) -> ParseRule<'a> {
+        self.rules.get(&kind).cloned().unwrap()
     }
 }
 
