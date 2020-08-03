@@ -155,26 +155,11 @@ impl Vm {
     }
 
     // TODO: Investigate macros for this
-    fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), LoxError> {
+    fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, r: fn(T) -> Value) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
             (Value::Number(value_b), Value::Number(value_a)) => {
-                self.push(Value::Number(f(value_a, value_b)));
-                Ok(())
-            }
-            _ => {
-                self.runtime_error("Operands must be numbers.");
-                Err(LoxError::RuntimeError)
-            }
-        }
-    }
-
-    // TODO: Investigate macros for this
-    fn comparison_op(&mut self, f: fn(f64, f64) -> bool) -> Result<(), LoxError> {
-        let operands = (self.pop(), self.pop());
-        match operands {
-            (Value::Number(value_b), Value::Number(value_a)) => {
-                self.push(Value::Bool(f(value_a, value_b)));
+                self.push(r(f(value_a, value_b)));
                 Ok(())
             }
             _ => {
@@ -196,21 +181,21 @@ impl Vm {
                     .disassemble_instruction(&instruction, self.ip - 1);
             }
             match instruction {
-                Instruction::Add => self.binary_op(|a, b| a + b)?,
+                Instruction::Add => self.binary_op(|a, b| a + b, |n| Value::Number(n))?,
                 Instruction::Constant(index) => {
                     let value = self.chunk.read_constant(index);
                     self.stack.push(value);
                 }
-                Instruction::Divide => self.binary_op(|a, b| a / b)?,
+                Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
                 Instruction::Equal => {
                     let a = self.pop();
                     let b = self.pop();
                     self.push(Value::Bool(a == b));
                 }
                 Instruction::False => self.push(Value::Bool(false)),
-                Instruction::Greater => self.comparison_op(|a, b| a > b)?,
-                Instruction::Less => self.comparison_op(|a, b| a < b)?,
-                Instruction::Multiply => self.binary_op(|a, b| a * b)?,
+                Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
+                Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
                     if let Value::Number(value) = self.peek() {
                         self.pop();
@@ -229,7 +214,7 @@ impl Vm {
                     println!("{}", self.stack.pop().expect("emtpy stack!"));
                     return Ok(());
                 }
-                Instruction::Substract => self.binary_op(|a, b| a - b)?,
+                Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
                 Instruction::True => self.push(Value::Bool(true)),
             };
         }
