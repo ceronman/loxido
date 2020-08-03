@@ -32,9 +32,6 @@ impl fmt::Display for Value {
     }
 }
 
-// TODO: Investigate how to completely remove this at compile time.
-const DEBUG: bool = true;
-
 #[derive(Debug, Copy, Clone)]
 enum Instruction {
     Add,
@@ -83,6 +80,7 @@ impl Chunk {
         self.constants[index as usize]
     }
 
+    #[cfg(debug_assertions)]
     fn disassemble(&self, name: &str) {
         println!("== {} ==", name);
         for (offset, instruction) in self.code.iter().enumerate() {
@@ -90,6 +88,7 @@ impl Chunk {
         }
     }
 
+    #[cfg(debug_assertions)]
     fn disassemble_instruction(&self, instruction: &Instruction, offset: usize) {
         print!("{:04} ", offset);
         let line = self.lines[offset];
@@ -172,14 +171,19 @@ impl Vm {
     fn run(&mut self) -> Result<(), LoxError> {
         loop {
             let instruction = self.next_instruction();
-            for value in self.stack.iter() {
-                print!("[{}]", value);
-            }
-            println!("");
-            if DEBUG {
+
+            #[cfg(debug_assertions)]
+            {
+                for value in self.stack.iter() {
+                    print!("[{}]", value);
+                }
+                println!("");
+
+                #[cfg(debug_assertions)]
                 self.chunk
                     .disassemble_instruction(&instruction, self.ip - 1);
             }
+
             match instruction {
                 Instruction::Add => self.binary_op(|a, b| a + b, |n| Value::Number(n))?,
                 Instruction::Constant(index) => {
@@ -705,9 +709,12 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
         self.emit(Instruction::Return);
-        if DEBUG && !self.had_error {
+
+        #[cfg(debug_assertions)]
+        if !self.had_error {
             self.chunk.disassemble("code");
         }
+
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
