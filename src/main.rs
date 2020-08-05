@@ -11,12 +11,13 @@ enum Value {
     Nil,
     Bool(bool),
     Number(f64),
+    Object(Obj),
 }
 
 impl Value {
     fn is_falsy(&self) -> bool {
         match self {
-            Value::Nil | Value::Number(_) => true,
+            Value::Nil | Value::Number(_) | Value::Object(_) => true,
             Value::Bool(value) => !value,
         }
     }
@@ -28,7 +29,31 @@ impl fmt::Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Number(value) => write!(f, "{}", value),
+            Value::Object(_) => write!(f, "<object>"),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ObjectType {
+    String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Obj {
+     kind: ObjectType
+}
+
+struct ObjString {
+    obj: Obj,
+    s: String,
+}
+
+fn is_object_type(value: Value, kind: ObjectType) -> bool {
+    if let Value::Object(obj) = value {
+        obj.kind == kind 
+    } else {
+        false
     }
 }
 
