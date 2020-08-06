@@ -6,12 +6,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::process;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    Object(Obj),
+    Object(LoxObject),
 }
 
 impl Value {
@@ -34,27 +34,9 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum ObjectType {
-    String,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Obj {
-     kind: ObjectType
-}
-
-struct ObjString {
-    obj: Obj,
-    s: String,
-}
-
-fn is_object_type(value: Value, kind: ObjectType) -> bool {
-    if let Value::Object(obj) = value {
-        obj.kind == kind 
-    } else {
-        false
-    }
+#[derive(Clone, Debug, PartialEq)]
+enum LoxObject {
+    LoxString(String),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -102,7 +84,7 @@ impl Chunk {
     }
 
     fn read_constant(&self, index: u8) -> Value {
-        self.constants[index as usize]
+        self.constants[index as usize].clone()
     }
 
     #[cfg(debug_assertions)]
@@ -126,7 +108,7 @@ impl Chunk {
             Instruction::Constant(index) => {
                 let i = *index;
                 let i = i as usize;
-                let value = self.constants[i];
+                let value = self.constants[i].clone();
                 println!("{:<16} {:4} {}", "OP_CONSTANT", index, value);
             }
             Instruction::Add => println!("OP_ADD"),
@@ -760,6 +742,11 @@ impl<'a> Parser<'a> {
         self.emit_constant(Value::Number(value));
     }
 
+    fn string(&mut self) {
+        let obj = LoxObject::LoxString(String::from(self.current.lexeme));
+        self.emit_constant(Value::Object(obj));
+    }
+
     fn literal(&mut self) {
         match self.previous.kind {
             TokenType::False => self.emit(Instruction::False),
@@ -941,6 +928,7 @@ fn run_file(path: &str) {
 }
 
 fn main() {
+    println!("{}", std::mem::size_of::<String>());
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => repl(),
