@@ -11,13 +11,13 @@ enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    Object(LoxObject),
+    String(String),
 }
 
 impl Value {
     fn is_falsy(&self) -> bool {
         match self {
-            Value::Nil | Value::Number(_) | Value::Object(_) => true,
+            Value::Nil | Value::Number(_) | Value::String(_) => true,
             Value::Bool(value) => !value,
         }
     }
@@ -29,14 +29,9 @@ impl fmt::Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Number(value) => write!(f, "{}", value),
-            Value::Object(_) => write!(f, "<object>"),
+            Value::String(value) => write!(f, "{}", value),
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum LoxObject {
-    LoxString(String),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -156,8 +151,10 @@ impl Vm {
         self.stack.pop().expect("Empty stack")
     }
 
-    fn peek(&self) -> Value {
-        self.stack.last().cloned().expect("Empty stack")
+    // TODO: Is peek necessary at all? Consider removing it.
+    fn peek(&self, n: usize) -> Value {
+        let size = self.stack.len();
+        self.stack[size - 1 - n].clone()
     }
 
     // TODO: Investigate macros for this
@@ -192,7 +189,26 @@ impl Vm {
             }
 
             match instruction {
-                Instruction::Add => self.binary_op(|a, b| a + b, |n| Value::Number(n))?,
+                Instruction::Add => {
+                    let (b, a) = (self.pop(), self.pop());
+                    match (&a, &b) {
+                        (Value::Number(value_a), Value::Number(value_b)) => {
+                            self.push(Value::Number(value_a + value_b));
+                        }
+
+                        (Value::String(value_a), Value::String(value_b)) => {
+                            let result = Value::String(format!("{}{}", value_a, value_b));
+                            self.push(result);
+                        }
+
+                        _ => {
+                            self.push(a);
+                            self.push(b);
+                            self.runtime_error("Operands must be numbers.");
+                            return Err(LoxError::RuntimeError);
+                        }
+                    }
+                }
                 Instruction::Constant(index) => {
                     let value = self.chunk.read_constant(index);
                     self.stack.push(value);
@@ -208,7 +224,7 @@ impl Vm {
                 Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
-                    if let Value::Number(value) = self.peek() {
+                    if let Value::Number(value) = self.peek(0) {
                         self.pop();
                         self.push(Value::Number(-value));
                     } else {
@@ -659,7 +675,12 @@ impl<'a> Parser<'a> {
             Precedence::Comparison,
         );
         rule(TokenType::Identifier, None, None, Precedence::None);
-        rule(TokenType::String, None, None, Precedence::None);
+        rule(
+            TokenType::String,
+            Some(Parser::string),
+            None,
+            Precedence::None,
+        );
         rule(
             TokenType::Number,
             Some(Parser::number),
@@ -743,8 +764,9 @@ impl<'a> Parser<'a> {
     }
 
     fn string(&mut self) {
-        let obj = LoxObject::LoxString(String::from(self.current.lexeme));
-        self.emit_constant(Value::Object(obj));
+        let lexeme = self.previous.lexeme;
+        let value = &lexeme[1..(lexeme.len() - 1)];
+        self.emit_constant(Value::String(String::from(value)));
     }
 
     fn literal(&mut self) {
