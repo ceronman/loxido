@@ -26,7 +26,7 @@ impl Vm {
         self.stack.pop().expect("Empty stack")
     }
 
-    // TODO: Is peek necessary at all? Consider removing it.
+    // FIXME: Ensure this is used in all the right places
     fn peek(&self, n: usize) -> Value {
         let size = self.stack.len();
         self.stack[size - 1 - n].clone()
@@ -112,8 +112,10 @@ impl Vm {
                     let value = self.pop();
                     self.push(Value::Bool(value.is_falsy()));
                 }
+                Instruction::Print => {
+                    println!("{}", self.pop());
+                }
                 Instruction::Return => {
-                    println!("{}", self.stack.pop().expect("emtpy stack!"));
                     return Ok(());
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,

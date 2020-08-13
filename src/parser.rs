@@ -226,8 +226,11 @@ impl<'a> Parser<'a> {
 
     pub fn compile(&mut self) -> Result<(), LoxError> {
         self.advance();
-        self.expression();
-        self.consume(TokenType::Eof, "Expect end of expression.");
+
+        while !self.matches(TokenType::Eof) {
+            self.declaration();
+        }
+
         self.emit(Instruction::Return);
 
         #[cfg(debug_assertions)]
@@ -244,6 +247,22 @@ impl<'a> Parser<'a> {
 
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
+    }
+
+    fn declaration(&mut self) {
+        self.statement()
+    }
+
+    fn statement(&mut self) {
+        if self.matches(TokenType::Print) {
+            self.print_statement();
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit(Instruction::Print);
     }
 
     fn number(&mut self) {
@@ -352,6 +371,19 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
+    }
+
+    fn matches(&mut self, kind: TokenType) -> bool {
+        if !self.check(kind) {
+            false
+        } else {
+            self.advance();
+            true
+        }
+    }
+
+    fn check(&self, kind: TokenType) -> bool {
+        self.current.kind == kind 
     }
 
     fn error_at_current(&mut self, msg: &str) {
