@@ -2,6 +2,7 @@ mod chunk;
 mod error;
 mod parser;
 mod scanner;
+mod strings;
 mod vm;
 
 use error::LoxError;

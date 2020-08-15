@@ -1,3 +1,4 @@
+use crate::strings::{LoxString, Strings};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -5,7 +6,7 @@ pub enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    String(String),
+    String(LoxString),
 }
 
 impl Value {
@@ -32,6 +33,7 @@ impl fmt::Display for Value {
 pub enum Instruction {
     Add,
     Constant(u8),
+    DefineGlobal(u8),
     Divide,
     Equal,
     False,
@@ -41,6 +43,7 @@ pub enum Instruction {
     Negate,
     Nil,
     Not,
+    Pop,
     Print,
     Return,
     Substract,
@@ -50,6 +53,7 @@ pub struct Chunk {
     pub code: Vec<Instruction>,
     constants: Vec<Value>,
     pub lines: Vec<usize>,
+    pub strings: Strings,
 }
 
 impl Chunk {
@@ -59,6 +63,7 @@ impl Chunk {
             code: Vec::new(),
             constants: Vec::new(),
             lines: Vec::new(),
+            strings: Strings::default(),
         }
     }
 
@@ -94,13 +99,9 @@ impl Chunk {
             print!("{:>4} ", line);
         }
         match instruction {
-            Instruction::Constant(index) => {
-                let i = *index;
-                let i = i as usize;
-                let value = self.constants[i].clone();
-                println!("{:<16} {:4} {}", "OP_CONSTANT", index, value);
-            }
+            Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
             Instruction::Add => println!("OP_ADD"),
+            Instruction::DefineGlobal(i) => self.disassemble_constant("OP_DEFINE_GLOBAL", *i),
             Instruction::Divide => println!("OP_DIVIDE"),
             Instruction::Equal => println!("OP_EQUAL"),
             Instruction::False => println!("OP_FALSE"),
@@ -110,10 +111,17 @@ impl Chunk {
             Instruction::Negate => println!("OP_NEGATE"),
             Instruction::Not => println!("OP_NOT"),
             Instruction::Nil => println!("OP_NIL"),
+            Instruction::Pop => println!("OP_POP"),
             Instruction::Print => println!("OP_PRINT"),
             Instruction::Return => println!("OP_RETURN"),
             Instruction::Substract => println!("OP_SUBSTRACT"),
             Instruction::True => println!("OP_TRUE"),
         }
+    }
+
+    fn disassemble_constant(&self, name: &str, index: u8) {
+        let i = index as usize;
+        let value = self.constants[i].clone();
+        println!("{:<16} {:4} {}", name, index, value);
     }
 }

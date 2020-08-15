@@ -249,13 +249,30 @@ impl<'a> Parser<'a> {
         self.parse_precedence(Precedence::Assignment);
     }
 
-    fn declaration(&mut self) {
-        self.statement()
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit(Instruction::Pop);
     }
+
+    fn declaration(&mut self) {
+        if self.matches(TokenType::Var) {
+            self.var_declaration();
+        }
+        self.statement();
+
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn var_declaration(&mut self) {}
 
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else {
+            self.expression_statement();
         }
     }
 
@@ -277,7 +294,8 @@ impl<'a> Parser<'a> {
     fn string(&mut self) {
         let lexeme = self.previous.lexeme;
         let value = &lexeme[1..(lexeme.len() - 1)];
-        self.emit_constant(Value::String(String::from(value)));
+        let s = self.chunk.strings.intern(value);
+        self.emit_constant(Value::String(s));
     }
 
     fn literal(&mut self) {
@@ -383,7 +401,7 @@ impl<'a> Parser<'a> {
     }
 
     fn check(&self, kind: TokenType) -> bool {
-        self.current.kind == kind 
+        self.current.kind == kind
     }
 
     fn error_at_current(&mut self, msg: &str) {
@@ -408,6 +426,30 @@ impl<'a> Parser<'a> {
             eprint!(" at '{}'", token.lexeme);
         }
         eprintln!(": {}", msg);
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while self.previous.kind != TokenType::Eof {
+            if self.previous.kind == TokenType::Semicolon {
+                return;
+            }
+
+            match self.current.kind {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => return,
+                _ => (),
+            }
+
+            self.advance()
+        }
     }
 
     fn emit(&mut self, instruction: Instruction) {
