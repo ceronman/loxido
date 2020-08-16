@@ -166,7 +166,12 @@ impl<'a> Parser<'a> {
             Some(Parser::binary),
             Precedence::Comparison,
         );
-        rule(TokenType::Identifier, None, None, Precedence::None);
+        rule(
+            TokenType::Identifier,
+            Some(Parser::variable),
+            None,
+            Precedence::None,
+        );
         rule(
             TokenType::String,
             Some(Parser::string),
@@ -320,6 +325,15 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn variable(&mut self) {
+        self.named_variable(self.previous);
+    }
+
+    fn named_variable(&mut self, name: Token) {
+        let index = self.identifier_constant(name);
+        self.emit(Instruction::GetGlobal(index));
+    }
+
     fn grouping(&mut self) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
@@ -379,7 +393,11 @@ impl<'a> Parser<'a> {
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
         self.consume(TokenType::Identifier, msg);
-        let identifier = self.chunk.strings.intern(self.previous.lexeme);
+        self.identifier_constant(self.previous)
+    }
+
+    fn identifier_constant(&mut self, token: Token) -> u8 {
+        let identifier = self.chunk.strings.intern(token.lexeme);
         let value = Value::String(identifier);
         self.make_constant(value)
     }

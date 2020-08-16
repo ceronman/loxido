@@ -97,10 +97,9 @@ impl Vm {
                     self.stack.push(value);
                 }
                 Instruction::DefineGlobal(index) => {
-                    if let Value::String(s) = self.chunk.read_constant(index) {
-                        let value = self.pop();
-                        self.globals.insert(s, value);
-                    }
+                    let s = self.chunk.read_string(index);
+                    let value = self.pop();
+                    self.globals.insert(s, value);
                 }
                 Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
                 Instruction::Equal => {
@@ -109,6 +108,18 @@ impl Vm {
                     self.push(Value::Bool(a == b));
                 }
                 Instruction::False => self.push(Value::Bool(false)),
+                Instruction::GetGlobal(index) => {
+                    let s = self.chunk.read_string(index);
+                    match self.globals.get(&s) {
+                        Some(&value) => self.push(value),
+                        None => {
+                            let name = self.chunk.strings.lookup(s);
+                            let msg = format!("Undefined variable '{}'.", name);
+                            self.runtime_error(&msg);
+                            return Err(LoxError::RuntimeError);
+                        }
+                    }
+                }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
                 Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
@@ -152,6 +163,7 @@ impl Vm {
         instruction
     }
 
+    // TODO: refactor this to return Err
     fn runtime_error(&mut self, msg: &str) {
         eprintln!("{}", msg);
         let line = self.chunk.lines[self.ip - 1]; // TODO: Encapsulate lines?
