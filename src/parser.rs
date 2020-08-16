@@ -258,15 +258,28 @@ impl<'a> Parser<'a> {
     fn declaration(&mut self) {
         if self.matches(TokenType::Var) {
             self.var_declaration();
+        } else {
+            self.statement();
         }
-        self.statement();
 
         if self.panic_mode {
             self.synchronize();
         }
     }
 
-    fn var_declaration(&mut self) {}
+    fn var_declaration(&mut self) {
+        let index = self.parse_variable("Expect variable name.");
+        if self.matches(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit(Instruction::Nil)
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+        self.emit(Instruction::DefineGlobal(index));
+    }
 
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
@@ -362,6 +375,13 @@ impl<'a> Parser<'a> {
             let infix_rule = self.get_rule(self.previous.kind).infix.unwrap();
             infix_rule(self);
         }
+    }
+
+    fn parse_variable(&mut self, msg: &str) -> u8 {
+        self.consume(TokenType::Identifier, msg);
+        let identifier = self.chunk.strings.intern(self.previous.lexeme);
+        let value = Value::String(identifier);
+        self.make_constant(value)
     }
 
     fn is_lower_precedence(&self, precedence: Precedence) -> bool {
@@ -461,7 +481,7 @@ impl<'a> Parser<'a> {
         self.chunk.write(i2, self.previous.line);
     }
 
-    fn emit_constant(&mut self, value: Value) {
+    fn make_constant(&mut self, value: Value) -> u8 {
         let index = self.chunk.add_constant(value);
         let index = match u8::try_from(index) {
             Ok(index) => index,
@@ -470,7 +490,12 @@ impl<'a> Parser<'a> {
                 0
             }
         };
-        self.emit(Instruction::Constant(index));
+        index
+    }
+
+    fn emit_constant(&mut self, value: Value) {
+        let index = self.make_constant(value);
+        self.emit(Instruction::Constant(index))
     }
 
     fn get_rule(&self, kind: TokenType) -> ParseRule<'a> {

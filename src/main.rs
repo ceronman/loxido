@@ -5,6 +5,7 @@ mod scanner;
 mod strings;
 mod vm;
 
+use chunk::{Instruction, Value};
 use error::LoxError;
 use parser::Parser;
 use std::env;
@@ -51,7 +52,8 @@ fn run_file(path: &str) {
 }
 
 fn main() {
-    println!("{}", std::mem::size_of::<String>());
+    println!("value size:       {}", std::mem::size_of::<Value>());
+    println!("instruction size: {}", std::mem::size_of::<Instruction>());
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => repl(),
