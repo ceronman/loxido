@@ -2,7 +2,7 @@ use crate::{
     chunk::{Chunk, Instruction, Value},
     error::LoxError,
     parser::Parser,
-    strings::LoxString,
+    strings::{LoxString, Strings},
 };
 use std::collections::HashMap;
 
@@ -11,22 +11,25 @@ pub struct Vm {
     ip: usize,
     stack: Vec<Value>,
     globals: HashMap<LoxString, Value>,
+    strings: Strings,
 }
 
 impl Vm {
     pub fn new() -> Vm {
+        // TODO: Investigate using #[derive(Default)] to avoid this.
         Vm {
             chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(256),
             globals: HashMap::new(),
+            strings: Strings::default(),
         }
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let mut parser = Parser::new(code);
-        parser.compile()?; // TODO: Perhaps this shoudl return owned chunk
-        self.chunk = parser.chunk;
+        self.chunk = Chunk::new();
+        let mut parser = Parser::new(code, &mut self.chunk, &mut self.strings);
+        parser.compile()?;
         self.ip = 0;
         self.run()
     }
@@ -85,10 +88,10 @@ impl Vm {
                         }
 
                         (Value::String(value_a), Value::String(value_b)) => {
-                            let s_a = self.chunk.strings.lookup(*value_a);
-                            let s_b = self.chunk.strings.lookup(*value_b);
+                            let s_a = self.strings.lookup(*value_a);
+                            let s_b = self.strings.lookup(*value_b);
                             let result = format!("{}{}", s_a, s_b);
-                            let s = self.chunk.strings.intern_onwed(result);
+                            let s = self.strings.intern_onwed(result);
                             let value = Value::String(s);
                             self.push(value);
                         }
@@ -122,7 +125,7 @@ impl Vm {
                     match self.globals.get(&s) {
                         Some(&value) => self.push(value),
                         None => {
-                            let name = self.chunk.strings.lookup(s);
+                            let name = self.strings.lookup(s);
                             let msg = format!("Undefined variable '{}'.", name);
                             self.runtime_error(&msg);
                             return Err(LoxError::RuntimeError);
@@ -152,7 +155,7 @@ impl Vm {
                 Instruction::Print => {
                     let value = self.pop();
                     if let Value::String(s) = value {
-                        println!("{}", self.chunk.strings.lookup(s))
+                        println!("{}", self.strings.lookup(s))
                     } else {
                         println!("{}", value);
                     }

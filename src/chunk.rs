@@ -1,4 +1,4 @@
-use crate::strings::{LoxString, Strings};
+use crate::strings::LoxString;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,7 +54,6 @@ pub struct Chunk {
     pub code: Vec<Instruction>,
     constants: Vec<Value>,
     pub lines: Vec<usize>,
-    pub strings: Strings,
 }
 
 impl Chunk {
@@ -64,7 +63,6 @@ impl Chunk {
             code: Vec::new(),
             constants: Vec::new(),
             lines: Vec::new(),
-            strings: Strings::default(),
         }
     }
 
