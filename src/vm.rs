@@ -1,6 +1,7 @@
 use crate::{
     chunk::{Chunk, Instruction, Value},
     error::LoxError,
+    parser::Parser,
     strings::LoxString,
 };
 use std::collections::HashMap;
@@ -13,13 +14,21 @@ pub struct Vm {
 }
 
 impl Vm {
-    pub fn new(chunk: Chunk) -> Vm {
+    pub fn new() -> Vm {
         Vm {
-            chunk,
+            chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(256),
             globals: HashMap::new(),
         }
+    }
+
+    pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
+        let mut parser = Parser::new(code);
+        parser.compile()?; // TODO: Perhaps this shoudl return owned chunk
+        self.chunk = parser.chunk;
+        self.ip = 0;
+        self.run()
     }
 
     fn push(&mut self, v: Value) {
@@ -51,7 +60,7 @@ impl Vm {
         }
     }
 
-    pub fn run(&mut self) -> Result<(), LoxError> {
+    fn run(&mut self) -> Result<(), LoxError> {
         loop {
             let instruction = self.next_instruction();
 
