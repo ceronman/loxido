@@ -163,6 +163,17 @@ impl Vm {
                 Instruction::Return => {
                     return Ok(());
                 }
+                Instruction::SetGlobal(index) => {
+                    let name = self.chunk.read_string(index);
+                    let value = self.peek(0);
+                    if let None = self.globals.insert(name, value) {
+                        self.globals.remove(&name);
+                        let s = self.strings.lookup(name);
+                        let msg = format!("Undefined variable '{}'.", s);
+                        self.runtime_error(&msg);
+                        return Err(LoxError::RuntimeError);
+                    }
+                }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
                 Instruction::True => self.push(Value::Bool(true)),
             };

@@ -47,6 +47,7 @@ pub enum Instruction {
     Pop,
     Print,
     Return,
+    SetGlobal(u8),
     Substract,
     True,
 }
@@ -122,6 +123,7 @@ impl Chunk {
             Instruction::Pop => println!("OP_POP"),
             Instruction::Print => println!("OP_PRINT"),
             Instruction::Return => println!("OP_RETURN"),
+            Instruction::SetGlobal(i) => self.disassemble_constant("OP_SET_GLOBAL", *i),
             Instruction::Substract => println!("OP_SUBSTRACT"),
             Instruction::True => println!("OP_TRUE"),
         }
