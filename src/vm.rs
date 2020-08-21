@@ -1,7 +1,7 @@
 use crate::{
     chunk::{Chunk, Instruction, Value},
     error::LoxError,
-    parser::Parser,
+    compiler::Parser,
     strings::{LoxString, Strings},
 };
 use std::collections::HashMap;
