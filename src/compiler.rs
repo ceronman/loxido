@@ -63,8 +63,39 @@ impl<'a> ParseRule<'a> {
     }
 }
 
+struct Local<'a> {
+    name: Token<'a>,
+    depth: i32
+}
+
+impl<'a> Local<'a> {
+    fn new(name: Token<'a>, depth: i32) -> Self {
+        Local {
+            name,
+            depth
+        }
+    }
+}
+
+const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
+
+struct Compiler<'a> {
+    locals: Vec<Local<'a>>,
+    scope_depth: i32
+}
+
+impl<'a> Compiler<'a> {
+    fn new() -> Self {
+        Compiler {
+            locals: Vec::with_capacity(LOCAL_COUNT),
+            scope_depth: 0,
+        }
+    }
+}
+
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
+    compiler: Compiler<'a>, // TODO: weird to have compiler inside parser
     chunk: &'a mut Chunk,
     strings: &'a mut Strings,
     current: Token<'a>,
@@ -222,6 +253,7 @@ impl<'a> Parser<'a> {
 
         Parser {
             scanner: Scanner::new(code),
+            compiler: Compiler::new(),
             chunk,
             strings,
             current: t1,
@@ -286,15 +318,46 @@ impl<'a> Parser<'a> {
             TokenType::Semicolon,
             "Expect ';' after variable declaration.",
         );
+        self.define_variable(index);
+    }
+
+    fn define_variable(&mut self, index: u8) {
+        if self.compiler.scope_depth > 0 {
+            return;
+        }
         self.emit(Instruction::DefineGlobal(index));
     }
 
     fn statement(&mut self) {
         if self.matches(TokenType::Print) {
             self.print_statement();
+        } else if self.matches(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();    
         } else {
             self.expression_statement();
         }
+    }
+
+    fn begin_scope(&mut self) {
+        self.compiler.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.compiler.scope_depth -= 1;
+
+        for _ in 0..self.compiler.locals.len() {
+            self.emit(Instruction::Pop);
+        }
+        self.compiler.locals.clear();
+    }
+
+    fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration();
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
     }
 
     fn print_statement(&mut self) {
@@ -406,6 +469,12 @@ impl<'a> Parser<'a> {
 
     fn parse_variable(&mut self, msg: &str) -> u8 {
         self.consume(TokenType::Identifier, msg);
+
+        self.declare_variable();
+        if self.compiler.scope_depth > 0 {
+            return 0;
+        }
+
         self.identifier_constant(self.previous)
     }
 
@@ -413,6 +482,39 @@ impl<'a> Parser<'a> {
         let identifier = self.strings.intern(token.lexeme);
         let value = Value::String(identifier);
         self.make_constant(value)
+    }
+
+    fn declare_variable(&mut self) {
+        // Global variables are implicitly declared
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
+        let name = self.previous;
+        if self.is_local_declared(name) {
+            self.error("Variable with this name already declared in this scope.");
+        }
+        self.add_local(name);
+    }
+
+    fn is_local_declared(&self, name: Token) -> bool {
+        for local in self.compiler.locals.iter().rev() {
+            if local.depth != -1 && local.depth < self.compiler.scope_depth {
+                return false;
+            }
+            if local.name.lexeme == name.lexeme {
+                return true;
+            }
+        }
+        false
+    } 
+
+    fn add_local(&mut self, token: Token<'a>) {
+        if self.compiler.locals.len() == LOCAL_COUNT {
+            self.error("Too many local variables in function.");
+            return;
+        }
+        let local = Local::new(token, self.compiler.scope_depth);
+        self.compiler.locals.push(local);
     }
 
     fn is_lower_precedence(&self, precedence: Precedence) -> bool {
