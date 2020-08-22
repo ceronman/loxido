@@ -38,6 +38,7 @@ pub enum Instruction {
     Equal,
     False,
     GetGlobal(u8),
+    GetLocal(u8),
     Greater,
     Less,
     Multiply,
@@ -48,6 +49,7 @@ pub enum Instruction {
     Print,
     Return,
     SetGlobal(u8),
+    SetLocal(u8),
     Substract,
     True,
 }
@@ -114,6 +116,7 @@ impl Chunk {
             Instruction::Equal => println!("OP_EQUAL"),
             Instruction::False => println!("OP_FALSE"),
             Instruction::GetGlobal(i) => self.disassemble_constant("OP_GET_GLOBAL", *i),
+            Instruction::GetLocal(i) => println!("OP_GET_LOCAL {}", i),
             Instruction::Greater => println!("OP_GREATER"),
             Instruction::Less => println!("OP_LESS"),
             Instruction::Multiply => println!("OP_MULTIPLY"),
@@ -124,6 +127,7 @@ impl Chunk {
             Instruction::Print => println!("OP_PRINT"),
             Instruction::Return => println!("OP_RETURN"),
             Instruction::SetGlobal(i) => self.disassemble_constant("OP_SET_GLOBAL", *i),
+            Instruction::SetLocal(i) => println!("OP_SET_LOCAL {}", i), // TODO: implement
             Instruction::Substract => println!("OP_SUBSTRACT"),
             Instruction::True => println!("OP_TRUE"),
         }

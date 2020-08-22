@@ -1,7 +1,7 @@
 use crate::{
     chunk::{Chunk, Instruction, Value},
-    error::LoxError,
     compiler::Parser,
+    error::LoxError,
     strings::{LoxString, Strings},
 };
 use std::collections::HashMap;
@@ -132,6 +132,10 @@ impl Vm {
                         }
                     }
                 }
+                Instruction::GetLocal(slot) => {
+                    let value = self.stack[slot as usize];
+                    self.push(value);
+                }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
                 Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
@@ -173,6 +177,10 @@ impl Vm {
                         self.runtime_error(&msg);
                         return Err(LoxError::RuntimeError);
                     }
+                }
+                Instruction::SetLocal(slot) => {
+                    let value = self.peek(0);
+                    self.stack[slot as usize] = value;
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
                 Instruction::True => self.push(Value::Bool(true)),

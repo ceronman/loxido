@@ -63,17 +63,15 @@ impl<'a> ParseRule<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
 struct Local<'a> {
     name: Token<'a>,
-    depth: i32
+    depth: i32,
 }
 
 impl<'a> Local<'a> {
     fn new(name: Token<'a>, depth: i32) -> Self {
-        Local {
-            name,
-            depth
-        }
+        Local { name, depth }
     }
 }
 
@@ -81,7 +79,7 @@ const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
 struct Compiler<'a> {
     locals: Vec<Local<'a>>,
-    scope_depth: i32
+    scope_depth: i32,
 }
 
 impl<'a> Compiler<'a> {
@@ -323,9 +321,15 @@ impl<'a> Parser<'a> {
 
     fn define_variable(&mut self, index: u8) {
         if self.compiler.scope_depth > 0 {
+            self.mark_initialized();
             return;
         }
         self.emit(Instruction::DefineGlobal(index));
+    }
+
+    fn mark_initialized(&mut self) {
+        let last_local = self.compiler.locals.last_mut().unwrap();
+        last_local.depth = self.compiler.scope_depth;
     }
 
     fn statement(&mut self) {
@@ -334,7 +338,7 @@ impl<'a> Parser<'a> {
         } else if self.matches(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
-            self.end_scope();    
+            self.end_scope();
         } else {
             self.expression_statement();
         }
@@ -396,13 +400,35 @@ impl<'a> Parser<'a> {
     }
 
     fn named_variable(&mut self, name: Token, can_assing: bool) {
-        let index = self.identifier_constant(name);
+        let get_op;
+        let set_op;
+        if let Some(arg) = self.resolve_local(name) {
+            get_op = Instruction::GetLocal(arg);
+            set_op = Instruction::SetLocal(arg);
+        } else {
+            let index = self.identifier_constant(name);
+            get_op = Instruction::GetGlobal(index);
+            set_op = Instruction::SetGlobal(index);
+        }
+
         if can_assing && self.matches(TokenType::Equal) {
             self.expression();
-            self.emit(Instruction::SetGlobal(index))
+            self.emit(set_op)
         } else {
-            self.emit(Instruction::GetGlobal(index));
+            self.emit(get_op);
         }
+    }
+
+    fn resolve_local(&mut self, name: Token) -> Option<u8> {
+        for (i, local) in self.compiler.locals.iter().enumerate().rev() {
+            if name.lexeme == local.name.lexeme {
+                if local.depth == -1 {
+                    self.error("Cannot read local variable in its own initializer.");
+                }
+                return Option::from(i as u8);
+            }
+        }
+        Option::None
     }
 
     fn grouping(&mut self, _can_assing: bool) {
@@ -506,14 +532,14 @@ impl<'a> Parser<'a> {
             }
         }
         false
-    } 
+    }
 
     fn add_local(&mut self, token: Token<'a>) {
         if self.compiler.locals.len() == LOCAL_COUNT {
             self.error("Too many local variables in function.");
             return;
         }
-        let local = Local::new(token, self.compiler.scope_depth);
+        let local = Local::new(token, -1);
         self.compiler.locals.push(local);
     }
 

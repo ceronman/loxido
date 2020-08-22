@@ -1,6 +1,6 @@
 mod chunk;
-mod error;
 mod compiler;
+mod error;
 mod scanner;
 mod strings;
 mod vm;
