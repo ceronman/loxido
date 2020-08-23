@@ -40,6 +40,7 @@ pub enum Instruction {
     GetGlobal(u8),
     GetLocal(u8),
     Greater,
+    Jump(u16),
     JumpIfFalse(u16),
     Less,
     Multiply,
@@ -120,6 +121,7 @@ impl Chunk {
             Instruction::GetGlobal(i) => self.disassemble_constant("OP_GET_GLOBAL", *i),
             Instruction::GetLocal(i) => println!("OP_GET_LOCAL {}", i),
             Instruction::Greater => println!("OP_GREATER"),
+            Instruction::Jump(offset) => println!("OP_JUMP {}", offset), // TODO:
             Instruction::JumpIfFalse(offset) => println!("OP_JUMP_IF_FALSE {}", offset), // TODO:
             Instruction::Less => println!("OP_LESS"),
             Instruction::Multiply => println!("OP_MULTIPLY"),

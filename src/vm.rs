@@ -141,6 +141,9 @@ impl Vm {
                     self.push(value);
                 }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Jump(offset) => {
+                    self.jump_forward(offset);
+                }
                 Instruction::JumpIfFalse(offset) => {
                     if self.peek(0).is_falsy() {
                         self.jump_forward(offset);

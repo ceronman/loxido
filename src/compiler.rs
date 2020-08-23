@@ -353,7 +353,13 @@ impl<'a> Parser<'a> {
         let then_jump = self.emit(Instruction::JumpIfFalse(0xffff));
         self.emit(Instruction::Pop);
         self.statement();
+        let else_jump = self.emit(Instruction::Jump(0xffff));
         self.patch_jump(then_jump);
+        self.emit(Instruction::Pop);
+        if self.matches(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
     }
 
     fn begin_scope(&mut self) {
@@ -664,6 +670,7 @@ impl<'a> Parser<'a> {
 
         match self.chunk.code[pos] {
             Instruction::JumpIfFalse(ref mut o) => *o = offset,
+            Instruction::Jump(ref mut o) => *o = offset,
             _ => panic!("Instruction at position is not jump"),
         }
     }
