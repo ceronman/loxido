@@ -43,6 +43,7 @@ pub enum Instruction {
     Jump(u16),
     JumpIfFalse(u16),
     Less,
+    Loop(u16),
     Multiply,
     Negate,
     Nil,
@@ -124,6 +125,7 @@ impl Chunk {
             Instruction::Jump(offset) => println!("OP_JUMP {}", offset), // TODO:
             Instruction::JumpIfFalse(offset) => println!("OP_JUMP_IF_FALSE {}", offset), // TODO:
             Instruction::Less => println!("OP_LESS"),
+            Instruction::Loop(offset) => println!("OP_LOOP {}", offset), // TODO:
             Instruction::Multiply => println!("OP_MULTIPLY"),
             Instruction::Negate => println!("OP_NEGATE"),
             Instruction::Not => println!("OP_NOT"),

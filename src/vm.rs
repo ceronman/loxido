@@ -67,6 +67,10 @@ impl Vm {
         self.ip += offset as usize;
     }
 
+    fn jump_backwards(&mut self, offset: u16) {
+        self.ip -= offset as usize + 1;
+    }
+
     fn run(&mut self) -> Result<(), LoxError> {
         loop {
             let instruction = self.next_instruction();
@@ -150,6 +154,9 @@ impl Vm {
                     }
                 }
                 Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
+                Instruction::Loop(offset) => {
+                    self.jump_backwards(offset);
+                }
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
                     if let Value::Number(value) = self.peek(0) {
