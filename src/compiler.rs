@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
             None,
             Precedence::None,
         );
-        rule(TokenType::And, None, None, Precedence::None);
+        rule(TokenType::And, None, Some(Parser::and_op), Precedence::And);
         rule(TokenType::Class, None, None, Precedence::None);
         rule(TokenType::Else, None, None, Precedence::None);
         rule(
@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
             None,
             Precedence::None,
         );
-        rule(TokenType::Or, None, None, Precedence::None);
+        rule(TokenType::Or, None, Some(Parser::or_op), Precedence::Or);
         rule(TokenType::Print, None, None, Precedence::None);
         rule(TokenType::Return, None, None, Precedence::None);
         rule(TokenType::Super, None, None, Precedence::None);
@@ -482,6 +482,23 @@ impl<'a> Parser<'a> {
 
             _ => panic!("Invalid unary operator"),
         };
+    }
+
+    fn and_op(&mut self, _can_assing: bool) {
+        println!(">>AND OP");
+        let false_jump = self.emit(Instruction::JumpIfFalse(0xffff));
+        self.emit(Instruction::Pop);
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(false_jump);
+    }
+
+    fn or_op(&mut self, _can_assing: bool) {
+        let false_jump = self.emit(Instruction::JumpIfFalse(0xffff));
+        let true_jump = self.emit(Instruction::Jump(0xffff));
+        self.patch_jump(false_jump);
+        self.emit(Instruction::Pop);
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(true_jump);
     }
 
     fn parse_precedence(&mut self, precedence: Precedence) {
