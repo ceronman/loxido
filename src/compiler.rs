@@ -1,6 +1,7 @@
 use crate::{
-    chunk::{Chunk, Instruction, Value},
+    chunk::{Instruction, Value},
     error::LoxError,
+    function::{FunctionType, LoxFunction},
     scanner::{Scanner, Token, TokenType},
     strings::Strings,
 };
@@ -78,6 +79,8 @@ impl<'a> Local<'a> {
 const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
 struct Compiler<'a> {
+    function: LoxFunction,
+    function_type: FunctionType,
     locals: Vec<Local<'a>>,
     scope_depth: i32,
 }
@@ -85,6 +88,8 @@ struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     fn new() -> Self {
         Compiler {
+            function: LoxFunction::new(),
+            function_type: FunctionType::Script,
             locals: Vec::with_capacity(LOCAL_COUNT),
             scope_depth: 0,
         }
@@ -94,7 +99,6 @@ impl<'a> Compiler<'a> {
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Compiler<'a>, // TODO: weird to have compiler inside parser
-    chunk: &'a mut Chunk,
     strings: &'a mut Strings,
     current: Token<'a>,
     previous: Token<'a>,
@@ -104,7 +108,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, chunk: &'a mut Chunk, strings: &'a mut Strings) -> Parser<'a> {
+    pub fn new(code: &'a str, strings: &'a mut Strings) -> Parser<'a> {
         let t1 = Token {
             kind: TokenType::Eof,
             lexeme: "",
@@ -252,7 +256,6 @@ impl<'a> Parser<'a> {
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(),
-            chunk,
             strings,
             current: t1,
             previous: t2,
@@ -262,7 +265,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn compile(&mut self) -> Result<(), LoxError> {
+    pub fn compile(mut self) -> Result<LoxFunction, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -273,13 +276,13 @@ impl<'a> Parser<'a> {
 
         #[cfg(debug_assertions)]
         if !self.had_error {
-            self.chunk.disassemble("code");
+            self.compiler.function.chunk.disassemble("code");
         }
 
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
-            Ok(())
+            Ok(self.compiler.function)
         }
     }
 
@@ -729,20 +732,23 @@ impl<'a> Parser<'a> {
     }
 
     fn emit(&mut self, instruction: Instruction) -> usize {
-        self.chunk.write(instruction, self.previous.line)
+        self.compiler
+            .function
+            .chunk
+            .write(instruction, self.previous.line)
     }
 
     fn emit_two(&mut self, i1: Instruction, i2: Instruction) -> usize {
-        self.chunk.write(i1, self.previous.line);
-        self.chunk.write(i2, self.previous.line)
+        self.compiler.function.chunk.write(i1, self.previous.line);
+        self.compiler.function.chunk.write(i2, self.previous.line)
     }
 
     fn start_loop(&self) -> usize {
-        self.chunk.code.len()
+        self.compiler.function.chunk.code.len()
     }
 
     fn emit_loop(&mut self, start_pos: usize) {
-        let offset = self.chunk.code.len() - start_pos;
+        let offset = self.compiler.function.chunk.code.len() - start_pos;
         let offset = match u16::try_from(offset) {
             Ok(o) => o,
             Err(_) => {
@@ -754,7 +760,7 @@ impl<'a> Parser<'a> {
     }
 
     fn patch_jump(&mut self, pos: usize) {
-        let offset = self.chunk.code.len() - 1 - pos;
+        let offset = self.compiler.function.chunk.code.len() - 1 - pos;
         let offset = match u16::try_from(offset) {
             Ok(offset) => offset,
             Err(_) => {
@@ -763,7 +769,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        match self.chunk.code[pos] {
+        match self.compiler.function.chunk.code[pos] {
             Instruction::JumpIfFalse(ref mut o) => *o = offset,
             Instruction::Jump(ref mut o) => *o = offset,
             _ => panic!("Instruction at position is not jump"),
@@ -771,7 +777,7 @@ impl<'a> Parser<'a> {
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
-        let index = self.chunk.add_constant(value);
+        let index = self.compiler.function.chunk.add_constant(value);
         let index = match u8::try_from(index) {
             Ok(index) => index,
             Err(_) => {
