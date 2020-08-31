@@ -10,7 +10,7 @@ use std::collections::HashMap;
 struct CallFrame {
     function: LoxFunction,
     ip: usize,
-    slots: usize,
+    slot: usize,
 }
 
 impl CallFrame {
@@ -18,7 +18,7 @@ impl CallFrame {
         CallFrame {
             function,
             ip: 0,
-            slots: 0,
+            slot: 0,
         }
     }
 }
@@ -159,7 +159,8 @@ impl Vm {
                     }
                 }
                 Instruction::GetLocal(slot) => {
-                    let value = self.stack[slot as usize];
+                    let i = slot as usize + frame.slot;
+                    let value = self.stack[i];
                     self.push(value);
                 }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
@@ -217,8 +218,9 @@ impl Vm {
                     }
                 }
                 Instruction::SetLocal(slot) => {
+                    let i = slot as usize + frame.slot;
                     let value = self.peek(0);
-                    self.stack[slot as usize] = value;
+                    self.stack[i] = value;
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
                 Instruction::True => self.push(Value::Bool(true)),
