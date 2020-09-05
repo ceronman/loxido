@@ -2,7 +2,7 @@ use crate::{
     chunk::{Instruction, Value},
     compiler::Parser,
     error::LoxError,
-    function::LoxFunction,
+    function::{Functions, LoxFunction},
     strings::{LoxString, Strings},
 };
 use std::collections::HashMap;
@@ -31,6 +31,7 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<LoxString, Value>,
     strings: Strings,
+    functions: Functions
 }
 
 impl Vm {
@@ -41,11 +42,12 @@ impl Vm {
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
             strings: Strings::default(),
+            functions: Functions::default()
         }
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.strings);
+        let parser = Parser::new(code, &mut self.strings, &mut self.functions);
         let function = parser.compile()?;
         self.frames.push(CallFrame::new(function));
         self.run()

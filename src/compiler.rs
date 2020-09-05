@@ -1,12 +1,12 @@
 use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
-    function::{FunctionType, LoxFunction},
+    function::{FunctionType, LoxFunction, Functions},
     scanner::{Scanner, Token, TokenType},
     strings::Strings,
 };
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::{mem, convert::TryFrom};
 
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 enum Precedence {
@@ -79,6 +79,7 @@ impl<'a> Local<'a> {
 const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
 struct Compiler<'a> {
+    enclosing: Option<Box<Compiler<'a>>>,
     function: LoxFunction,
     function_type: FunctionType,
     locals: Vec<Local<'a>>,
@@ -86,20 +87,31 @@ struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    fn new() -> Self {
-        Compiler {
+    fn new(enclosing: Option<Box<Compiler<'a>>>, kind: FunctionType) -> Box<Self> {
+        let mut compiler = Compiler {
+            enclosing,
             function: LoxFunction::new(),
-            function_type: FunctionType::Script,
+            function_type: kind,
             locals: Vec::with_capacity(LOCAL_COUNT),
             scope_depth: 0,
-        }
+        };
+
+        // TODO: This is ugly!
+        let token = Token {
+            kind: TokenType::Error,
+            lexeme: "",
+            line: 0,
+        };
+        compiler.locals.push(Local::new(token, 0));
+        Box::new(compiler)
     }
 }
 
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
-    compiler: Compiler<'a>, // TODO: weird to have compiler inside parser
+    compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
     strings: &'a mut Strings,
+    functions: &'a mut Functions,
     current: Token<'a>,
     previous: Token<'a>,
     had_error: bool,
@@ -108,7 +120,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, strings: &'a mut Strings) -> Parser<'a> {
+    pub fn new(code: &'a str, strings: &'a mut Strings, functions: &'a mut Functions) -> Parser<'a> {
         let t1 = Token {
             kind: TokenType::Eof,
             lexeme: "",
@@ -255,8 +267,9 @@ impl<'a> Parser<'a> {
 
         Parser {
             scanner: Scanner::new(code),
-            compiler: Compiler::new(),
+            compiler: Compiler::new(None, FunctionType::Script),
             strings,
+            functions,
             current: t1,
             previous: t2,
             had_error: false,
@@ -297,7 +310,9 @@ impl<'a> Parser<'a> {
     }
 
     fn declaration(&mut self) {
-        if self.matches(TokenType::Var) {
+        if self.matches(TokenType::Fun) {
+            self.fun_declaration();
+        } else if self.matches(TokenType::Var) {
             self.var_declaration();
         } else {
             self.statement();
@@ -306,6 +321,59 @@ impl<'a> Parser<'a> {
         if self.panic_mode {
             self.synchronize();
         }
+    }
+
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name.");
+        self.mark_initialized();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
+    }
+
+    fn push_compiler(&mut self, kind: FunctionType) {
+        let new_compiler = Compiler::new(None, kind);
+        let old_compiler = mem::replace(&mut self.compiler, new_compiler);
+        self.compiler.enclosing = Some(old_compiler);
+        let function_name = self.strings.intern(self.previous.lexeme);
+        self.compiler.function.name = function_name;
+    }
+
+    fn pop_compiler(&mut self) -> LoxFunction {
+        self.emit(Instruction::Nil);
+        self.emit(Instruction::Return);
+        match self.compiler.enclosing.take() {
+            Some(enclosing) => {
+                let compiler = mem::replace(&mut self.compiler, enclosing);
+                compiler.function
+            },
+            None => panic!("Didn't find an enclosing compiler")
+        }
+    }
+
+    fn function(&mut self, kind: FunctionType) {
+        self.push_compiler(kind);
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.compiler.function.arity += 1;
+                if self.compiler.function.arity > 255 {
+                    self.error_at_current("Cannot have more than 255 parameters.");
+                }
+                let param = self.parse_variable("Expect parameter name.");
+                self.define_variable(param);
+                if !self.matches(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        //...
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+        self.block();
+        let function = self.pop_compiler();
+        let fn_id = self.functions.store(function);
+        self.emit_constant(Value::Function(fn_id));
     }
 
     fn var_declaration(&mut self) {
@@ -331,6 +399,9 @@ impl<'a> Parser<'a> {
     }
 
     fn mark_initialized(&mut self) {
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
         let last_local = self.compiler.locals.last_mut().unwrap();
         last_local.depth = self.compiler.scope_depth;
     }

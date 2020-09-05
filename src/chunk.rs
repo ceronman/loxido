@@ -1,4 +1,4 @@
-use crate::strings::LoxString;
+use crate::{function::FunctionId, strings::LoxString};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -7,24 +7,28 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(LoxString),
+    Function(FunctionId) // TODO: Create a type alias
 }
 
 impl Value {
     pub fn is_falsy(&self) -> bool {
         match self {
-            Value::Nil | Value::Number(_) | Value::String(_) => true,
+            Value::Nil => false,
             Value::Bool(value) => !value,
+            _ => true
         }
     }
 }
 
+// TODO: refactor and fix
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Number(value) => write!(f, "{}", value),
-            Value::String(value) => write!(f, "{}", value),
+            Value::String(value) => write!(f, "<str {}>", value),
+            Value::Function(value) => write!(f, "<fn {}>", value),
         }
     }
 }
