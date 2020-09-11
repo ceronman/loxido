@@ -1,12 +1,12 @@
 use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
-    function::{FunctionType, LoxFunction, Functions},
+    function::{FunctionId, FunctionType, Functions, LoxFunction},
     scanner::{Scanner, Token, TokenType},
     strings::Strings,
 };
 use std::collections::HashMap;
-use std::{mem, convert::TryFrom};
+use std::{convert::TryFrom, mem};
 
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 enum Precedence {
@@ -120,7 +120,11 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, strings: &'a mut Strings, functions: &'a mut Functions) -> Parser<'a> {
+    pub fn new(
+        code: &'a str,
+        strings: &'a mut Strings,
+        functions: &'a mut Functions,
+    ) -> Parser<'a> {
         let t1 = Token {
             kind: TokenType::Eof,
             lexeme: "",
@@ -142,7 +146,7 @@ impl<'a> Parser<'a> {
         rule(
             TokenType::LeftParen,
             Some(Parser::grouping),
-            None,
+            Some(Parser::call),
             Precedence::None,
         );
         rule(TokenType::RightParen, None, None, Precedence::None);
@@ -278,7 +282,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn compile(mut self) -> Result<LoxFunction, LoxError> {
+    pub fn compile(mut self) -> Result<FunctionId, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -295,7 +299,7 @@ impl<'a> Parser<'a> {
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
-            Ok(self.compiler.function)
+            Ok(self.functions.store(self.compiler.function))
         }
     }
 
@@ -345,8 +349,8 @@ impl<'a> Parser<'a> {
             Some(enclosing) => {
                 let compiler = mem::replace(&mut self.compiler, enclosing);
                 compiler.function
-            },
-            None => panic!("Didn't find an enclosing compiler")
+            }
+            None => panic!("Didn't find an enclosing compiler"),
         }
     }
 
@@ -583,6 +587,31 @@ impl<'a> Parser<'a> {
             }
         }
         Option::None
+    }
+
+    fn call(&mut self, _can_assing: bool) {
+        let arg_count = self.argument_list();
+        self.emit(Instruction::Call(arg_count));
+    }
+
+    fn argument_list(&mut self) -> u8 {
+        let mut count = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+
+                if count == 255 {
+                    self.error("Cannot have more than 255 arguments.");
+                }
+
+                count += 1;
+                if !self.matches(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+        count
     }
 
     fn grouping(&mut self, _can_assing: bool) {

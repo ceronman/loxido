@@ -11,9 +11,10 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
-use vm::Vm;
+use vm::{ExecutionState, Vm};
 
 fn repl(vm: &mut Vm) {
+    let mut state = ExecutionState::new();
     loop {
         print!("> ");
         io::stdout().flush().unwrap();
@@ -24,7 +25,7 @@ fn repl(vm: &mut Vm) {
         if line.len() == 0 {
             break;
         }
-        let _ = vm.interpret(&line);
+        vm.interpret(&line, &mut state).ok();
     }
 }
 
@@ -37,7 +38,7 @@ fn run_file(vm: &mut Vm, path: &str) {
         }
     };
 
-    match vm.interpret(&code) {
+    match vm.interpret(&code, &mut ExecutionState::new()) {
         Ok(_) => process::exit(65),
         _ => process::exit(70),
     };

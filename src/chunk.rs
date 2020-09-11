@@ -7,7 +7,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(LoxString),
-    Function(FunctionId) // TODO: Create a type alias
+    Function(FunctionId), // TODO: Create a type alias
 }
 
 impl Value {
@@ -15,7 +15,7 @@ impl Value {
         match self {
             Value::Nil => false,
             Value::Bool(value) => !value,
-            _ => true
+            _ => true,
         }
     }
 }
@@ -36,6 +36,7 @@ impl fmt::Display for Value {
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {
     Add,
+    Call(u8),
     Constant(u8),
     DefineGlobal(u8),
     Divide,
@@ -118,6 +119,7 @@ impl Chunk {
         }
         match instruction {
             Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
+            Instruction::Call(i) => println!("OP_CALL {}", i), // TODO: implement
             Instruction::Add => println!("OP_ADD"),
             Instruction::DefineGlobal(i) => self.disassemble_constant("OP_DEFINE_GLOBAL", *i),
             Instruction::Divide => println!("OP_DIVIDE"),

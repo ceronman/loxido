@@ -25,7 +25,7 @@ impl LoxFunction {
 }
 #[derive(Default)]
 pub struct Functions {
-    functions: Vec<LoxFunction>
+    functions: Vec<LoxFunction>,
 }
 
 impl Functions {

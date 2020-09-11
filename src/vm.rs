@@ -2,19 +2,19 @@ use crate::{
     chunk::{Instruction, Value},
     compiler::Parser,
     error::LoxError,
-    function::{Functions, LoxFunction},
+    function::{FunctionId, Functions},
     strings::{LoxString, Strings},
 };
 use std::collections::HashMap;
 
 struct CallFrame {
-    function: LoxFunction,
+    function: FunctionId,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(function: LoxFunction) -> Self {
+    fn new(function: FunctionId) -> Self {
         CallFrame {
             function,
             ip: 0,
@@ -26,31 +26,19 @@ impl CallFrame {
 const MAX_FRAMES: usize = 64;
 const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
 
-pub struct Vm {
+pub struct ExecutionState {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<LoxString, Value>,
-    strings: Strings,
-    functions: Functions
 }
 
-impl Vm {
-    pub fn new() -> Vm {
-        // TODO: Investigate using #[derive(Default)] to avoid this.
-        Vm {
+impl ExecutionState {
+    pub fn new() -> Self {
+        Self {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
-            strings: Strings::default(),
-            functions: Functions::default()
         }
-    }
-
-    pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.strings, &mut self.functions);
-        let function = parser.compile()?;
-        self.frames.push(CallFrame::new(function));
-        self.run()
     }
 
     fn push(&mut self, v: Value) {
@@ -64,55 +52,75 @@ impl Vm {
     // FIXME: Ensure this is used in all the right places
     fn peek(&self, n: usize) -> Value {
         let size = self.stack.len();
-        self.stack[size - 1 - n].clone()
+        self.stack[size - 1 - n]
     }
+}
 
-    // TODO: Investigate macros for this
-    fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, r: fn(T) -> Value) -> Result<(), LoxError> {
-        let operands = (self.pop(), self.pop());
-        match operands {
-            (Value::Number(value_b), Value::Number(value_a)) => {
-                self.push(r(f(value_a, value_b)));
-                Ok(())
-            }
-            _ => {
-                let frame = match self.frames.last() {
-                    Some(f) => f,
-                    None => panic!("No frames available"),
-                };
-                Vm::runtime_error(frame, "Operands must be numbers.");
-                Err(LoxError::RuntimeError)
-            }
+pub struct Vm {
+    strings: Strings,
+    functions: Functions,
+}
+
+impl Vm {
+    pub fn new() -> Vm {
+        // TODO: Investigate using #[derive(Default)] to avoid this.
+        Vm {
+            strings: Strings::default(),
+            functions: Functions::default(),
         }
     }
 
-    fn run(&mut self) -> Result<(), LoxError> {
-        let mut frame = self.frames.pop().unwrap(); // TODO unwrap
+    pub fn interpret(&mut self, code: &str, state: &mut ExecutionState) -> Result<(), LoxError> {
+        let parser = Parser::new(code, &mut self.strings, &mut self.functions);
+        let function = parser.compile()?;
+        state.frames.push(CallFrame::new(function));
+        self.run(state)
+    }
+
+    // TODO: Investigate macros for this
+    fn binary_op<T>(
+        &self,
+        frame: &CallFrame,
+        state: &mut ExecutionState,
+        f: fn(f64, f64) -> T,
+        r: fn(T) -> Value,
+    ) -> Result<(), LoxError> {
+        let operands = (state.pop(), state.pop());
+        match operands {
+            (Value::Number(value_b), Value::Number(value_a)) => {
+                state.push(r(f(value_a, value_b)));
+                Ok(())
+            }
+            _ => Err(self.runtime_error(&frame, "Operands must be numbers.")),
+        }
+    }
+
+    fn run(&mut self, state: &mut ExecutionState) -> Result<(), LoxError> {
+        let mut frame = state.frames.pop().unwrap();
+        let mut chunk = &self.functions.lookup(frame.function).chunk;
+
         loop {
-            let instruction = frame.function.chunk.code[frame.ip];
+            let instruction = chunk.code[frame.ip];
 
             #[cfg(debug_assertions)]
             {
-                for value in self.stack.iter() {
+                for value in state.stack.iter() {
                     print!("[{}]", value);
                 }
                 println!("");
 
                 #[cfg(debug_assertions)]
-                frame
-                    .function
-                    .chunk
-                    .disassemble_instruction(&instruction, frame.ip);
+                chunk.disassemble_instruction(&instruction, frame.ip);
             }
 
             frame.ip += 1;
 
             match instruction {
                 Instruction::Add => {
-                    let (b, a) = (self.pop(), self.pop());
+                    let (b, a) = (state.pop(), state.pop());
                     match (&a, &b) {
                         (Value::Number(value_a), Value::Number(value_b)) => {
-                            self.push(Value::Number(value_a + value_b));
+                            state.push(Value::Number(value_a + value_b));
                         }
 
                         (Value::String(value_a), Value::String(value_b)) => {
@@ -121,83 +129,92 @@ impl Vm {
                             let result = format!("{}{}", s_a, s_b);
                             let s = self.strings.intern_onwed(result);
                             let value = Value::String(s);
-                            self.push(value);
+                            state.push(value);
                         }
 
                         _ => {
-                            self.push(a);
-                            self.push(b);
-                            Vm::runtime_error(&frame, "Operands must be numbers.");
-                            return Err(LoxError::RuntimeError);
+                            state.push(a);
+                            state.push(b);
+                            return Err(self.runtime_error(&frame, "Operands must be numbers."));
                         }
                     }
                 }
+                Instruction::Call(arg_count) => {
+                    frame = self.call_value(frame, state, arg_count)?;
+                    chunk = &self.functions.lookup(frame.function).chunk;
+                }
                 Instruction::Constant(index) => {
-                    let value = frame.function.chunk.read_constant(index);
-                    self.stack.push(value);
+                    let value = chunk.read_constant(index);
+                    state.push(value);
                 }
                 Instruction::DefineGlobal(index) => {
-                    let s = frame.function.chunk.read_string(index);
-                    let value = self.pop();
-                    self.globals.insert(s, value);
+                    let s = chunk.read_string(index);
+                    let value = state.pop();
+                    state.globals.insert(s, value);
                 }
-                Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
+                Instruction::Divide => {
+                    self.binary_op(&frame, state, |a, b| a / b, |n| Value::Number(n))?
+                }
                 Instruction::Equal => {
-                    let a = self.pop();
-                    let b = self.pop();
-                    self.push(Value::Bool(a == b));
+                    let a = state.pop();
+                    let b = state.pop();
+                    state.push(Value::Bool(a == b));
                 }
-                Instruction::False => self.push(Value::Bool(false)),
+                Instruction::False => state.push(Value::Bool(false)),
                 Instruction::GetGlobal(index) => {
-                    let s = frame.function.chunk.read_string(index);
-                    match self.globals.get(&s) {
-                        Some(&value) => self.push(value),
+                    let s = chunk.read_string(index);
+                    match state.globals.get(&s) {
+                        Some(&value) => state.push(value),
                         None => {
                             let name = self.strings.lookup(s);
                             let msg = format!("Undefined variable '{}'.", name);
-                            Vm::runtime_error(&frame, &msg);
-                            return Err(LoxError::RuntimeError);
+                            return Err(self.runtime_error(&frame, &msg));
                         }
                     }
                 }
                 Instruction::GetLocal(slot) => {
                     let i = slot as usize + frame.slot;
-                    let value = self.stack[i];
-                    self.push(value);
+                    let value = state.stack[i];
+                    state.push(value);
                 }
-                Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Greater => {
+                    self.binary_op(&frame, state, |a, b| a > b, |n| Value::Bool(n))?
+                }
                 Instruction::Jump(offset) => {
                     frame.ip += offset as usize;
                 }
                 Instruction::JumpIfFalse(offset) => {
-                    if self.peek(0).is_falsy() {
+                    if state.peek(0).is_falsy() {
                         frame.ip += offset as usize;
                     }
                 }
-                Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
+                Instruction::Less => {
+                    self.binary_op(&frame, state, |a, b| a < b, |n| Value::Bool(n))?
+                }
                 Instruction::Loop(offset) => {
                     frame.ip -= offset as usize + 1;
                 }
-                Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
+                Instruction::Multiply => {
+                    self.binary_op(&frame, state, |a, b| a * b, |n| Value::Number(n))?
+                }
                 Instruction::Negate => {
-                    if let Value::Number(value) = self.peek(0) {
-                        self.pop();
-                        self.push(Value::Number(-value));
+                    if let Value::Number(value) = state.peek(0) {
+                        state.pop();
+                        state.push(Value::Number(-value));
                     } else {
-                        Vm::runtime_error(&frame, "Operand must be a number.");
-                        return Err(LoxError::RuntimeError);
+                        return Err(self.runtime_error(&frame, "Operand must be a number."));
                     }
                 }
-                Instruction::Nil => self.push(Value::Nil),
+                Instruction::Nil => state.push(Value::Nil),
                 Instruction::Not => {
-                    let value = self.pop();
-                    self.push(Value::Bool(value.is_falsy()));
+                    let value = state.pop();
+                    state.push(Value::Bool(value.is_falsy()));
                 }
                 Instruction::Pop => {
-                    self.pop();
+                    state.pop();
                 }
                 Instruction::Print => {
-                    let value = self.pop();
+                    let value = state.pop();
                     if let Value::String(s) = value {
                         println!("{}", self.strings.lookup(s))
                     } else {
@@ -209,32 +226,56 @@ impl Vm {
                 }
                 Instruction::SetGlobal(index) => {
                     // TODO: refactor long indirection?
-                    let name = frame.function.chunk.read_string(index);
-                    let value = self.peek(0);
-                    if let None = self.globals.insert(name, value) {
-                        self.globals.remove(&name);
+                    let name = chunk.read_string(index);
+                    let value = state.peek(0);
+                    if let None = state.globals.insert(name, value) {
+                        state.globals.remove(&name);
                         let s = self.strings.lookup(name);
                         let msg = format!("Undefined variable '{}'.", s);
-                        Vm::runtime_error(&frame, &msg);
-                        return Err(LoxError::RuntimeError);
+                        return Err(self.runtime_error(&frame, &msg));
                     }
                 }
                 Instruction::SetLocal(slot) => {
                     let i = slot as usize + frame.slot;
-                    let value = self.peek(0);
-                    self.stack[i] = value;
+                    let value = state.peek(0);
+                    state.stack[i] = value;
                 }
-                Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
-                Instruction::True => self.push(Value::Bool(true)),
+                Instruction::Substract => {
+                    self.binary_op(&frame, state, |a, b| a - b, |n| Value::Number(n))?
+                }
+                Instruction::True => state.push(Value::Bool(true)),
             };
         }
     }
 
+    fn call_value(
+        &self,
+        frame: CallFrame,
+        state: &mut ExecutionState,
+        arg_count: u8,
+    ) -> Result<CallFrame, LoxError> {
+        let callee = state.peek(0);
+        if let Value::Function(fid) = callee {
+            state.frames.push(frame);
+            Ok(self.call(state, fid, arg_count))
+        } else {
+            Err(self.runtime_error(&frame, "Can only call functions and classes."))
+        }
+    }
+
+    fn call(&self, state: &ExecutionState, function: FunctionId, arg_count: u8) -> CallFrame {
+        let mut frame = CallFrame::new(function);
+        frame.slot = state.stack.len() - (arg_count as usize) - 2;
+        frame
+    }
+
     // TODO: refactor this to return Err
     // TODO: refactor as part of frame
-    fn runtime_error(frame: &CallFrame, msg: &str) {
+    fn runtime_error(&self, frame: &CallFrame, msg: &str) -> LoxError {
         eprintln!("{}", msg);
-        let line = frame.function.chunk.lines[frame.ip - 1]; // TODO: Encapsulate lines?
+        let chunk = &self.functions.lookup(frame.function).chunk;
+        let line = chunk.lines[frame.ip - 1];
         eprintln!("[line {}] in script", line);
+        LoxError::RuntimeError
     }
 }
