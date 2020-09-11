@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
             TokenType::LeftParen,
             Some(Parser::grouping),
             Some(Parser::call),
-            Precedence::None,
+            Precedence::Call,
         );
         rule(TokenType::RightParen, None, None, Precedence::None);
         rule(TokenType::LeftBrace, None, None, Precedence::None);
@@ -289,6 +289,7 @@ impl<'a> Parser<'a> {
             self.declaration();
         }
 
+        self.emit(Instruction::Nil);
         self.emit(Instruction::Return);
 
         #[cfg(debug_assertions)]
@@ -415,6 +416,8 @@ impl<'a> Parser<'a> {
             self.print_statement();
         } else if self.matches(TokenType::If) {
             self.if_statement();
+        } else if self.matches(TokenType::Return) {
+            self.return_statement();
         } else if self.matches(TokenType::While) {
             self.while_statement();
         } else if self.matches(TokenType::For) {
@@ -425,6 +428,21 @@ impl<'a> Parser<'a> {
             self.end_scope();
         } else {
             self.expression_statement();
+        }
+    }
+
+    fn return_statement(&mut self) {
+        if let FunctionType::Script = self.compiler.function_type {
+            self.error("Cannot return from top-level code.");
+        }
+        if self.matches(TokenType::Semicolon) {
+            // TODO: duplicated in many places:
+            self.emit(Instruction::Nil);
+            self.emit(Instruction::Return);
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit(Instruction::Return);
         }
     }
 

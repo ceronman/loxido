@@ -97,6 +97,8 @@ impl Vm {
 
     fn run(&mut self, state: &mut ExecutionState) -> Result<(), LoxError> {
         let mut frame = state.frames.pop().unwrap();
+
+        // TODO: Maybe get rid of this references and use only frame
         let mut chunk = &self.functions.lookup(frame.function).chunk;
 
         loop {
@@ -140,6 +142,7 @@ impl Vm {
                     }
                 }
                 Instruction::Call(arg_count) => {
+                    // TODO: Unify duplicated functionality also in return
                     frame = self.call_value(frame, state, arg_count)?;
                     chunk = &self.functions.lookup(frame.function).chunk;
                 }
@@ -222,7 +225,18 @@ impl Vm {
                     }
                 }
                 Instruction::Return => {
-                    return Ok(());
+                    let value = state.pop();
+                    match state.frames.pop() {
+                        Some(f) => {
+                            state.stack.truncate(frame.slot);
+                            state.push(value);
+                            frame = f;
+                            chunk = &self.functions.lookup(frame.function).chunk;
+                        }
+                        None => {
+                            return Ok(());
+                        }
+                    }
                 }
                 Instruction::SetGlobal(index) => {
                     // TODO: refactor long indirection?
@@ -254,23 +268,39 @@ impl Vm {
         state: &mut ExecutionState,
         arg_count: u8,
     ) -> Result<CallFrame, LoxError> {
-        let callee = state.peek(0);
+        let callee = state.peek(arg_count as usize);
         if let Value::Function(fid) = callee {
-            state.frames.push(frame);
-            Ok(self.call(state, fid, arg_count))
+            self.call(frame, state, fid, arg_count)
         } else {
             Err(self.runtime_error(&frame, "Can only call functions and classes."))
         }
     }
 
-    fn call(&self, state: &ExecutionState, function: FunctionId, arg_count: u8) -> CallFrame {
-        let mut frame = CallFrame::new(function);
-        frame.slot = state.stack.len() - (arg_count as usize) - 2;
-        frame
+    fn call(
+        &self,
+        frame: CallFrame,
+        state: &mut ExecutionState,
+        function: FunctionId,
+        arg_count: u8,
+    ) -> Result<CallFrame, LoxError> {
+        // TODO: Inefficient double lookup;
+        let f = self.functions.lookup(function);
+        if (arg_count as usize) != f.arity {
+            let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
+            Err(self.runtime_error(&frame, &msg))
+        } else if state.frames.len() == MAX_FRAMES {
+            Err(self.runtime_error(&frame, "Stack overflow."))
+        } else {
+            state.frames.push(frame);
+            // TODO this looks cleaner with a constructor
+            let mut frame = CallFrame::new(function);
+            println!("{} {}", state.stack.len(), arg_count);
+            frame.slot = state.stack.len() - (arg_count as usize) - 1;
+            Ok(frame)
+        }
     }
 
-    // TODO: refactor this to return Err
-    // TODO: refactor as part of frame
+    // TODO: Maybe return Err(RuntimeError) directly?
     fn runtime_error(&self, frame: &CallFrame, msg: &str) -> LoxError {
         eprintln!("{}", msg);
         let chunk = &self.functions.lookup(frame.function).chunk;
