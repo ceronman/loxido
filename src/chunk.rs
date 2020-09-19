@@ -7,7 +7,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(LoxString),
-    Function(FunctionId), // TODO: Create a type alias
+    Function(FunctionId),
     NativeFunction(NativeFn),
 }
 
@@ -63,6 +63,8 @@ pub enum Instruction {
     Substract,
     True,
 }
+
+#[derive(Default)]
 pub struct Chunk {
     pub code: Vec<Instruction>,
     constants: Vec<Value>,
@@ -70,15 +72,6 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new() -> Chunk {
-        // TODO: use from capacity!
-        Chunk {
-            code: Vec::new(),
-            constants: Vec::new(),
-            lines: Vec::new(),
-        }
-    }
-
     pub fn write(&mut self, instruction: Instruction, line: usize) -> usize {
         self.code.push(instruction);
         self.lines.push(line);

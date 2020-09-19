@@ -90,7 +90,7 @@ impl<'a> Compiler<'a> {
     fn new(enclosing: Option<Box<Compiler<'a>>>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
             enclosing,
-            function: LoxFunction::new(),
+            function: LoxFunction::default(),
             function_type: kind,
             locals: Vec::with_capacity(LOCAL_COUNT),
             scope_depth: 0,
