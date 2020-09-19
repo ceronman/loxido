@@ -1,4 +1,4 @@
-use crate::{function::FunctionId, strings::LoxString};
+use crate::{function::FunctionId, function::NativeFn, strings::LoxString};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -8,6 +8,7 @@ pub enum Value {
     Number(f64),
     String(LoxString),
     Function(FunctionId), // TODO: Create a type alias
+    NativeFunction(NativeFn),
 }
 
 impl Value {
@@ -29,6 +30,7 @@ impl fmt::Display for Value {
             Value::Number(value) => write!(f, "{}", value),
             Value::String(value) => write!(f, "<str {}>", value),
             Value::Function(value) => write!(f, "<fn {}>", value),
+            Value::NativeFunction(_) => write!(f, "<native fn>"),
         }
     }
 }
