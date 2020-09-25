@@ -74,20 +74,13 @@ impl ExecutionState {
     }
 }
 
+#[derive(Default)]
 pub struct Vm {
     strings: Strings,
     functions: Functions,
 }
 
 impl Vm {
-    pub fn new() -> Vm {
-        // TODO: Investigate using #[derive(Default)] to avoid this.
-        Vm {
-            strings: Strings::default(),
-            functions: Functions::default(),
-        }
-    }
-
     pub fn new_state(&mut self) -> ExecutionState {
         ExecutionState::new(&mut self.strings)
     }

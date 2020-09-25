@@ -51,7 +51,7 @@ fn main() {
     println!("value size:       {}", std::mem::size_of::<Value>());
     println!("instruction size: {}", std::mem::size_of::<Instruction>());
     let args: Vec<String> = env::args().collect();
-    let mut vm = Vm::new();
+    let mut vm = Vm::default();
     match args.len() {
         1 => repl(&mut vm),
         2 => run_file(&mut vm, &args[1]),
