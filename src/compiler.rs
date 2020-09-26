@@ -378,7 +378,10 @@ impl<'a> Parser<'a> {
         self.block();
         let function = self.pop_compiler();
         let fn_id = self.functions.store(function);
-        self.emit_constant(Value::Function(fn_id));
+
+        // TODO: these two lines are very similar to emit_constant
+        let index = self.make_constant(Value::Function(fn_id));
+        self.emit(Instruction::Closure(index));
     }
 
     fn var_declaration(&mut self) {
@@ -668,7 +671,6 @@ impl<'a> Parser<'a> {
     }
 
     fn and_op(&mut self, _can_assing: bool) {
-        println!(">>AND OP");
         let false_jump = self.emit(Instruction::JumpIfFalse(0xffff));
         self.emit(Instruction::Pop);
         self.parse_precedence(Precedence::And);

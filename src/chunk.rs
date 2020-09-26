@@ -1,4 +1,4 @@
-use crate::{function::FunctionId, function::NativeFn, strings::LoxString};
+use crate::{function::FunctionId, function::NativeFn, strings::LoxString, closure::ClosureId};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -8,6 +8,7 @@ pub enum Value {
     Number(f64),
     String(LoxString),
     Function(FunctionId),
+    Closure(ClosureId),
     NativeFunction(NativeFn),
 }
 
@@ -30,6 +31,7 @@ impl fmt::Display for Value {
             Value::Number(value) => write!(f, "{}", value),
             Value::String(value) => write!(f, "<str {}>", value),
             Value::Function(value) => write!(f, "<fn {}>", value),
+            Value::Closure(value) => write!(f, "<fn {}>", value),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
         }
     }
@@ -39,6 +41,7 @@ impl fmt::Display for Value {
 pub enum Instruction {
     Add,
     Call(u8),
+    Closure(u8),
     Constant(u8),
     DefineGlobal(u8),
     Divide,
@@ -113,9 +116,10 @@ impl Chunk {
             print!("{:>4} ", line);
         }
         match instruction {
+            Instruction::Add => println!("OP_ADD"),
+            Instruction::Closure(i) => println!("OP_CLOSURE"), // TODO: implement
             Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
             Instruction::Call(i) => println!("OP_CALL {}", i), // TODO: implement
-            Instruction::Add => println!("OP_ADD"),
             Instruction::DefineGlobal(i) => self.disassemble_constant("OP_DEFINE_GLOBAL", *i),
             Instruction::Divide => println!("OP_DIVIDE"),
             Instruction::Equal => println!("OP_EQUAL"),

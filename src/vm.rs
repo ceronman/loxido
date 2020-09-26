@@ -7,19 +7,21 @@ use crate::{
     function::NativeFn,
     function::{FunctionId, Functions},
     strings::{LoxString, Strings},
-};
+closure::Closure, closure::Closures, closure::ClosureId};
 use std::collections::HashMap;
 
 struct CallFrame {
     function: FunctionId,
+    closure: ClosureId,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(function: FunctionId) -> Self {
+    fn new(function: FunctionId, closure: ClosureId) -> Self {
         CallFrame {
             function,
+            closure,
             ip: 0,
             slot: 0,
         }
@@ -33,6 +35,7 @@ pub struct ExecutionState {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<LoxString, Value>,
+    closures: Closures,
 }
 
 lazy_static! {
@@ -49,6 +52,7 @@ impl ExecutionState {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
+            closures: Closures::default(),
         };
         state.define_native(strings, "clock", NativeFn(clock));
         state
@@ -88,7 +92,9 @@ impl Vm {
     pub fn interpret(&mut self, code: &str, state: &mut ExecutionState) -> Result<(), LoxError> {
         let parser = Parser::new(code, &mut self.strings, &mut self.functions);
         let function = parser.compile()?;
-        state.frames.push(CallFrame::new(function));
+        let closure = Closure::new(function);
+        let closure_id = state.closures.store(closure);
+        state.frames.push(CallFrame::new(function, closure_id));
         self.run(state)
     }
 
@@ -112,9 +118,10 @@ impl Vm {
 
     fn run(&mut self, state: &mut ExecutionState) -> Result<(), LoxError> {
         let mut frame = state.frames.pop().unwrap();
+        let closure = state.closures.lookup(frame.closure);
 
         // TODO: Maybe get rid of this references and use only frame
-        let mut chunk = &self.functions.lookup(frame.function).chunk;
+        let mut chunk = &self.functions.lookup(closure.function).chunk;
 
         loop {
             let instruction = chunk.code[frame.ip];
@@ -154,6 +161,14 @@ impl Vm {
                             state.push(b);
                             return Err(self.runtime_error(&frame, "Operands must be numbers."));
                         }
+                    }
+                }
+                Instruction::Closure(index) => {
+                    let c = chunk.read_constant(index);
+                    if let Value::Function(function_id) = c {
+                        let closure = Closure::new(function_id);
+                        let closure_id = state.closures.store(closure);
+                        state.push(Value::Closure(closure_id));
                     }
                 }
                 Instruction::Call(arg_count) => {
@@ -285,7 +300,7 @@ impl Vm {
     ) -> Result<CallFrame, LoxError> {
         let callee = state.peek(arg_count as usize);
         match callee {
-            Value::Function(fid) => self.call(frame, state, fid, arg_count),
+            Value::Closure(cid) => self.call(frame, state, cid, arg_count),
             Value::NativeFunction(native) => {
                 let left = state.stack.len() - arg_count as usize;
                 let result = native.0(&state.stack[left..]);
@@ -300,11 +315,12 @@ impl Vm {
         &self,
         frame: CallFrame,
         state: &mut ExecutionState,
-        function: FunctionId,
+        closure_id: ClosureId,
         arg_count: u8,
     ) -> Result<CallFrame, LoxError> {
+        let closure = state.closures.lookup(closure_id);
         // TODO: Inefficient double lookup;
-        let f = self.functions.lookup(function);
+        let f = self.functions.lookup(closure.function);
         if (arg_count as usize) != f.arity {
             let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
             Err(self.runtime_error(&frame, &msg))
@@ -313,8 +329,7 @@ impl Vm {
         } else {
             state.frames.push(frame);
             // TODO this looks cleaner with a constructor
-            let mut frame = CallFrame::new(function);
-            println!("{} {}", state.stack.len(), arg_count);
+            let mut frame = CallFrame::new(closure.function, closure_id);
             frame.slot = state.stack.len() - (arg_count as usize) - 1;
             Ok(frame)
         }

@@ -1,3 +1,4 @@
+mod closure;
 mod chunk;
 mod compiler;
 mod error;
