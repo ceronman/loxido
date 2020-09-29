@@ -1,21 +1,16 @@
 use crate::function::FunctionId;
 
-
 pub struct Closure {
-    pub function: FunctionId
+    pub function: FunctionId,
 }
 
 impl Closure {
     pub fn new(function: FunctionId) -> Self {
-        Closure {
-            function
-        }
-    } 
+        Closure { function }
+    }
 }
 
-
 pub type ClosureId = usize;
-
 
 // TODO: Refactor into a generic
 #[derive(Default)]

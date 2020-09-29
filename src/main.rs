@@ -1,5 +1,5 @@
-mod closure;
 mod chunk;
+mod closure;
 mod compiler;
 mod error;
 mod function;

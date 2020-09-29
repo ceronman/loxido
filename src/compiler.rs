@@ -1,6 +1,7 @@
 use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
+    function::Upvalue,
     function::{FunctionId, FunctionType, Functions, LoxFunction},
     scanner::{Scanner, Token, TokenType},
     strings::Strings,
@@ -86,6 +87,11 @@ struct Compiler<'a> {
     scope_depth: i32,
 }
 
+struct VarResolution {
+    index: Option<u8>,
+    error: Option<&'static str>,
+}
+
 impl<'a> Compiler<'a> {
     fn new(enclosing: Option<Box<Compiler<'a>>>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
@@ -104,6 +110,54 @@ impl<'a> Compiler<'a> {
         };
         compiler.locals.push(Local::new(token, 0));
         Box::new(compiler)
+    }
+
+    fn resolve_local(&self, name: Token) -> VarResolution {
+        for (i, local) in self.locals.iter().enumerate().rev() {
+            if name.lexeme == local.name.lexeme {
+                let error = if local.depth == -1 {
+                    Some("Cannot read local variable in its own initializer.")
+                } else {
+                    None
+                };
+
+                return VarResolution {
+                    index: Option::from(i as u8),
+                    error,
+                };
+            }
+        }
+        VarResolution {
+            index: None,
+            error: None,
+        }
+    }
+
+    fn resolve_upvalue(&mut self, name: Token) -> VarResolution {
+        if let Some(enclosing) = self.enclosing.as_ref() {
+            let resolution = enclosing.resolve_local(name);
+            let index = if let Some(index) = resolution.index {
+                self.add_upvalue(index, true)
+            } else {
+                None
+            };
+            VarResolution {
+                index: index,
+                error: resolution.error,
+            }
+        } else {
+            VarResolution {
+                index: None,
+                error: None,
+            }
+        }
+    }
+
+    fn add_upvalue(&mut self, index: u8, is_local: bool) -> Option<u8> {
+        let count = self.function.upvalues.len() as u8;
+        let upvalue = Upvalue { index, is_local };
+        self.function.upvalues.push(upvalue);
+        Some(count)
     }
 }
 
@@ -584,6 +638,9 @@ impl<'a> Parser<'a> {
         if let Some(arg) = self.resolve_local(name) {
             get_op = Instruction::GetLocal(arg);
             set_op = Instruction::SetLocal(arg);
+        } else if let Some(arg) = self.resolve_upvalue(name) {
+            get_op = Instruction::GetUpvalue(arg);
+            set_op = Instruction::SetUpvalue(arg);
         } else {
             let index = self.identifier_constant(name);
             get_op = Instruction::GetGlobal(index);
@@ -599,15 +656,19 @@ impl<'a> Parser<'a> {
     }
 
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
-        for (i, local) in self.compiler.locals.iter().enumerate().rev() {
-            if name.lexeme == local.name.lexeme {
-                if local.depth == -1 {
-                    self.error("Cannot read local variable in its own initializer.");
-                }
-                return Option::from(i as u8);
-            }
+        let resolution = self.compiler.resolve_local(name);
+        if let Some(error) = resolution.error {
+            self.error(error);
         }
-        Option::None
+        resolution.index
+    }
+
+    fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
+        let resolution = self.compiler.resolve_upvalue(name);
+        if let Some(error) = resolution.error {
+            self.error(error);
+        }
+        resolution.index
     }
 
     fn call(&mut self, _can_assing: bool) {

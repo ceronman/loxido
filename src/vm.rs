@@ -2,12 +2,15 @@ use cpu_time::ProcessTime;
 
 use crate::{
     chunk::{Instruction, Value},
+    closure::Closure,
+    closure::ClosureId,
+    closure::Closures,
     compiler::Parser,
     error::LoxError,
     function::NativeFn,
     function::{FunctionId, Functions},
     strings::{LoxString, Strings},
-closure::Closure, closure::Closures, closure::ClosureId};
+};
 use std::collections::HashMap;
 
 struct CallFrame {
@@ -210,6 +213,9 @@ impl Vm {
                     let value = state.stack[i];
                     state.push(value);
                 }
+                Instruction::GetUpvalue(slot) => {
+                    unimplemented!("Get upvalue");
+                }
                 Instruction::Greater => {
                     self.binary_op(&frame, state, |a, b| a > b, |n| Value::Bool(n))?
                 }
@@ -283,6 +289,9 @@ impl Vm {
                     let i = slot as usize + frame.slot;
                     let value = state.peek(0);
                     state.stack[i] = value;
+                }
+                Instruction::SetUpvalue(slot) => {
+                    unimplemented!("Set Upvalue");
                 }
                 Instruction::Substract => {
                     self.binary_op(&frame, state, |a, b| a - b, |n| Value::Number(n))?
