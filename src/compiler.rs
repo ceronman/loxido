@@ -84,12 +84,8 @@ struct Compiler<'a> {
     function: LoxFunction,
     function_type: FunctionType,
     locals: Vec<Local<'a>>,
+    errors: Vec<&'static str>,
     scope_depth: i32,
-}
-
-struct VarResolution {
-    index: Option<u8>,
-    error: Option<&'static str>,
 }
 
 impl<'a> Compiler<'a> {
@@ -99,6 +95,7 @@ impl<'a> Compiler<'a> {
             function: LoxFunction::default(),
             function_type: kind,
             locals: Vec::with_capacity(LOCAL_COUNT),
+            errors: Vec::with_capacity(LOCAL_COUNT),
             scope_depth: 0,
         };
 
@@ -112,52 +109,47 @@ impl<'a> Compiler<'a> {
         Box::new(compiler)
     }
 
-    fn resolve_local(&self, name: Token) -> VarResolution {
+    fn resolve_local(&mut self, name: Token) -> Option<u8> {
         for (i, local) in self.locals.iter().enumerate().rev() {
             if name.lexeme == local.name.lexeme {
-                let error = if local.depth == -1 {
-                    Some("Cannot read local variable in its own initializer.")
-                } else {
-                    None
-                };
-
-                return VarResolution {
-                    index: Option::from(i as u8),
-                    error,
-                };
+                if local.depth == -1 {
+                    self.errors
+                        .push("Cannot read local variable in its own initializer.");
+                }
+                return Some(i as u8);
             }
         }
-        VarResolution {
-            index: None,
-            error: None,
-        }
+        None
     }
 
-    fn resolve_upvalue(&mut self, name: Token) -> VarResolution {
-        if let Some(enclosing) = self.enclosing.as_ref() {
-            let resolution = enclosing.resolve_local(name);
-            let index = if let Some(index) = resolution.index {
-                self.add_upvalue(index, true)
-            } else {
-                None
-            };
-            VarResolution {
-                index: index,
-                error: resolution.error,
+    fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
+        if let Some(enclosing) = self.enclosing.as_mut() {
+            if let Some(index) = enclosing.resolve_local(name) {
+                return Some(self.add_upvalue(index, true));
             }
-        } else {
-            VarResolution {
-                index: None,
-                error: None,
+            if let Some(index) = enclosing.resolve_upvalue(name) {
+                return Some(self.add_upvalue(index, true));
             }
         }
+        None
     }
 
-    fn add_upvalue(&mut self, index: u8, is_local: bool) -> Option<u8> {
-        let count = self.function.upvalues.len() as u8;
+    fn add_upvalue(&mut self, index: u8, is_local: bool) -> u8 {
+        for (i, upvalue) in self.function.upvalues.iter().enumerate() {
+            if upvalue.index == index && upvalue.is_local == is_local {
+                return i as u8;
+            }
+        }
+        let count = self.function.upvalues.len();
+
+        if count == LOCAL_COUNT {
+            self.errors.push("Too many closure variables in function.");
+            return 0;
+        }
+
         let upvalue = Upvalue { index, is_local };
         self.function.upvalues.push(upvalue);
-        Some(count)
+        return count as u8;
     }
 }
 
@@ -655,20 +647,27 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // TODO: resolve_local and resolve_upvalue are pretty much the same
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
-        let resolution = self.compiler.resolve_local(name);
-        if let Some(error) = resolution.error {
-            self.error(error);
+        let result = self.compiler.resolve_local(name);
+        loop {
+            match self.compiler.errors.pop() {
+                Some(error) => self.error(error),
+                None => break,
+            }
         }
-        resolution.index
+        result
     }
 
     fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
-        let resolution = self.compiler.resolve_upvalue(name);
-        if let Some(error) = resolution.error {
-            self.error(error);
+        let result = self.compiler.resolve_upvalue(name);
+        loop {
+            match self.compiler.errors.pop() {
+                Some(error) => self.error(error),
+                None => break,
+            }
         }
-        resolution.index
+        result
     }
 
     fn call(&mut self, _can_assing: bool) {
