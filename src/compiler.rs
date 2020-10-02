@@ -128,7 +128,7 @@ impl<'a> Compiler<'a> {
                 return Some(self.add_upvalue(index, true));
             }
             if let Some(index) = enclosing.resolve_upvalue(name) {
-                return Some(self.add_upvalue(index, true));
+                return Some(self.add_upvalue(index, false));
             }
         }
         None
