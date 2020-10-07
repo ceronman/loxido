@@ -1,12 +1,28 @@
+use std::rc::Rc;
+
 use crate::function::FunctionId;
+
+pub struct ObjUpvalue {
+    pub location: usize, // TODO: Make this a proper type
+}
+
+impl ObjUpvalue {
+    pub fn new(location: usize) -> Self {
+        ObjUpvalue { location }
+    }
+}
 
 pub struct Closure {
     pub function: FunctionId,
+    pub upvalues: Vec<Rc<ObjUpvalue>>,
 }
 
 impl Closure {
     pub fn new(function: FunctionId) -> Self {
-        Closure { function }
+        Closure {
+            function,
+            upvalues: Vec::new(),
+        } // TODO: use .with_capacity
     }
 }
 

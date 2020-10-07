@@ -5,13 +5,14 @@ use crate::{
     closure::Closure,
     closure::ClosureId,
     closure::Closures,
+    closure::ObjUpvalue,
     compiler::Parser,
     error::LoxError,
     function::NativeFn,
     function::{FunctionId, Functions},
     strings::{LoxString, Strings},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 struct CallFrame {
     function: FunctionId,
@@ -121,10 +122,12 @@ impl Vm {
 
     fn run(&mut self, state: &mut ExecutionState) -> Result<(), LoxError> {
         let mut frame = state.frames.pop().unwrap();
-        let closure = state.closures.lookup(frame.closure);
 
         // TODO: Maybe get rid of this references and use only frame
-        let mut chunk = &self.functions.lookup(closure.function).chunk;
+        let mut chunk = {
+            let closure = state.closures.lookup(frame.closure);
+            &self.functions.lookup(closure.function).chunk
+        };
 
         loop {
             let instruction = chunk.code[frame.ip];
@@ -169,8 +172,21 @@ impl Vm {
                 Instruction::Closure(index) => {
                     let c = chunk.read_constant(index);
                     if let Value::Function(function_id) = c {
-                        let closure = Closure::new(function_id);
-                        let closure_id = state.closures.store(closure);
+                        let function = self.functions.lookup(function_id);
+                        let mut new_closure = Closure::new(function_id);
+
+                        for upvalue in function.upvalues.iter() {
+                            let obj_upvalue = if upvalue.is_local {
+                                // TODO: unify u8 vs usize everywhere
+                                self.capture_value(frame.slot + upvalue.index as usize)
+                            } else {
+                                let current_closure = state.closures.lookup(frame.closure);
+                                current_closure.upvalues[upvalue.index as usize].clone()
+                            };
+                            new_closure.upvalues.push(obj_upvalue)
+                        }
+
+                        let closure_id = state.closures.store(new_closure);
                         state.push(Value::Closure(closure_id));
                     }
                 }
@@ -299,6 +315,11 @@ impl Vm {
                 Instruction::True => state.push(Value::Bool(true)),
             };
         }
+    }
+
+    fn capture_value(&self, location: usize) -> Rc<ObjUpvalue> {
+        let upvalue = ObjUpvalue::new(location);
+        Rc::new(upvalue)
     }
 
     fn call_value(
