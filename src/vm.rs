@@ -230,7 +230,10 @@ impl Vm {
                     state.push(value);
                 }
                 Instruction::GetUpvalue(slot) => {
-                    unimplemented!("Get upvalue");
+                    let current_closure = state.closures.lookup(frame.closure);
+                    let location = current_closure.upvalues[slot as usize].location;
+                    let value = state.stack[location];
+                    state.push(value);
                 }
                 Instruction::Greater => {
                     self.binary_op(&frame, state, |a, b| a > b, |n| Value::Bool(n))?
@@ -307,7 +310,11 @@ impl Vm {
                     state.stack[i] = value;
                 }
                 Instruction::SetUpvalue(slot) => {
-                    unimplemented!("Set Upvalue");
+                    // TODO: current_closure dance is repeated a lot.
+                    let current_closure = state.closures.lookup(frame.closure);
+                    let location = current_closure.upvalues[slot as usize].location;
+                    let value = state.peek(0);
+                    state.stack[location] = value;
                 }
                 Instruction::Substract => {
                     self.binary_op(&frame, state, |a, b| a - b, |n| Value::Number(n))?
