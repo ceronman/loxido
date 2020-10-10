@@ -69,11 +69,16 @@ impl<'a> ParseRule<'a> {
 struct Local<'a> {
     name: Token<'a>,
     depth: i32,
+    is_captured: bool,
 }
 
 impl<'a> Local<'a> {
     fn new(name: Token<'a>, depth: i32) -> Self {
-        Local { name, depth }
+        Local {
+            name,
+            depth,
+            is_captured: false,
+        }
     }
 }
 
@@ -125,6 +130,7 @@ impl<'a> Compiler<'a> {
     fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
         if let Some(enclosing) = self.enclosing.as_mut() {
             if let Some(index) = enclosing.resolve_local(name) {
+                enclosing.locals[index as usize].is_captured = true;
                 return Some(self.add_upvalue(index, true));
             }
             if let Some(index) = enclosing.resolve_upvalue(name) {
@@ -576,7 +582,11 @@ impl<'a> Parser<'a> {
         self.compiler.scope_depth -= 1;
         for i in (0..self.compiler.locals.len()).rev() {
             if self.compiler.locals[i].depth > self.compiler.scope_depth {
-                self.emit(Instruction::Pop);
+                if self.compiler.locals[i].is_captured {
+                    self.emit(Instruction::CloseUpvalue);
+                } else {
+                    self.emit(Instruction::Pop);
+                }
                 self.compiler.locals.pop();
             }
         }

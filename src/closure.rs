@@ -1,20 +1,24 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::function::FunctionId;
+use crate::{chunk::Value, function::FunctionId};
 
 pub struct ObjUpvalue {
     pub location: usize, // TODO: Make this a proper type
+    pub closed: Option<Value>,
 }
 
 impl ObjUpvalue {
     pub fn new(location: usize) -> Self {
-        ObjUpvalue { location }
+        ObjUpvalue {
+            location,
+            closed: None,
+        }
     }
 }
 
 pub struct Closure {
     pub function: FunctionId,
-    pub upvalues: Vec<Rc<ObjUpvalue>>,
+    pub upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
 }
 
 impl Closure {

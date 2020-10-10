@@ -12,7 +12,7 @@ use crate::{
     function::{FunctionId, Functions},
     strings::{LoxString, Strings},
 };
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 struct CallFrame {
     function: FunctionId,
@@ -40,6 +40,7 @@ pub struct ExecutionState {
     stack: Vec<Value>,
     globals: HashMap<LoxString, Value>,
     closures: Closures,
+    open_upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
 }
 
 lazy_static! {
@@ -57,6 +58,7 @@ impl ExecutionState {
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
             closures: Closures::default(),
+            open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
         state.define_native(strings, "clock", NativeFn(clock));
         state
@@ -169,6 +171,11 @@ impl Vm {
                         }
                     }
                 }
+                Instruction::CloseUpvalue => {
+                    let stack_top = state.stack.len() - 1;
+                    self.close_upvalues(state, stack_top);
+                    state.pop();
+                }
                 Instruction::Closure(index) => {
                     let c = chunk.read_constant(index);
                     if let Value::Function(function_id) = c {
@@ -178,7 +185,7 @@ impl Vm {
                         for upvalue in function.upvalues.iter() {
                             let obj_upvalue = if upvalue.is_local {
                                 // TODO: unify u8 vs usize everywhere
-                                self.capture_value(frame.slot + upvalue.index as usize)
+                                self.capture_value(state, frame.slot + upvalue.index as usize)
                             } else {
                                 let current_closure = state.closures.lookup(frame.closure);
                                 current_closure.upvalues[upvalue.index as usize].clone()
@@ -230,9 +237,15 @@ impl Vm {
                     state.push(value);
                 }
                 Instruction::GetUpvalue(slot) => {
-                    let current_closure = state.closures.lookup(frame.closure);
-                    let location = current_closure.upvalues[slot as usize].location;
-                    let value = state.stack[location];
+                    let value = {
+                        let current_closure = state.closures.lookup(frame.closure);
+                        let upvalue = current_closure.upvalues[slot as usize].borrow();
+                        if let Some(value) = upvalue.closed {
+                            value
+                        } else {
+                            state.stack[upvalue.location]
+                        }
+                    };
                     state.push(value);
                 }
                 Instruction::Greater => {
@@ -281,6 +294,7 @@ impl Vm {
                 }
                 Instruction::Return => {
                     let value = state.pop();
+                    self.close_upvalues(state, frame.slot);
                     match state.frames.pop() {
                         Some(f) => {
                             state.stack.truncate(frame.slot);
@@ -312,9 +326,13 @@ impl Vm {
                 Instruction::SetUpvalue(slot) => {
                     // TODO: current_closure dance is repeated a lot.
                     let current_closure = state.closures.lookup(frame.closure);
-                    let location = current_closure.upvalues[slot as usize].location;
+                    let mut upvalue = current_closure.upvalues[slot as usize].borrow_mut();
                     let value = state.peek(0);
-                    state.stack[location] = value;
+                    if let None = upvalue.closed {
+                        state.stack[upvalue.location] = value;
+                    } else {
+                        upvalue.closed = Some(value);
+                    }
                 }
                 Instruction::Substract => {
                     self.binary_op(&frame, state, |a, b| a - b, |n| Value::Number(n))?
@@ -324,9 +342,33 @@ impl Vm {
         }
     }
 
-    fn capture_value(&self, location: usize) -> Rc<ObjUpvalue> {
+    fn close_upvalues(&self, state: &mut ExecutionState, last: usize) {
+        let mut i = 0;
+        while i != state.open_upvalues.len() {
+            if state.open_upvalues[i].borrow().location >= last {
+                let upvalue = state.open_upvalues.remove(i);
+                let location = upvalue.borrow().location;
+                upvalue.borrow_mut().closed = Some(state.stack[location]);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn capture_value(
+        &self,
+        state: &mut ExecutionState,
+        location: usize,
+    ) -> Rc<RefCell<ObjUpvalue>> {
+        for upvalue in state.open_upvalues.iter() {
+            if upvalue.borrow().location == location {
+                return Rc::clone(upvalue);
+            }
+        }
         let upvalue = ObjUpvalue::new(location);
-        Rc::new(upvalue)
+        let upvalue = Rc::new(RefCell::new(upvalue));
+        state.open_upvalues.push(Rc::clone(&upvalue));
+        upvalue
     }
 
     fn call_value(

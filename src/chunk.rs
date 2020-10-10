@@ -41,6 +41,7 @@ impl fmt::Display for Value {
 pub enum Instruction {
     Add,
     Call(u8),
+    CloseUpvalue,
     Closure(u8),
     Constant(u8),
     DefineGlobal(u8),
@@ -119,7 +120,8 @@ impl Chunk {
         }
         match instruction {
             Instruction::Add => println!("OP_ADD"),
-            Instruction::Closure(i) => println!("OP_CLOSURE"), // TODO: implement
+            Instruction::CloseUpvalue => println!("OP_CLOSE_UPVALUE"), // TODO: implement
+            Instruction::Closure(i) => println!("OP_CLOSURE {}", i),   // TODO: implement
             Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
             Instruction::Call(i) => println!("OP_CALL {}", i), // TODO: implement
             Instruction::DefineGlobal(i) => self.disassemble_constant("OP_DEFINE_GLOBAL", *i),
