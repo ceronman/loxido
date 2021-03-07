@@ -1,3 +1,4 @@
+mod allocator;
 mod chunk;
 mod closure;
 mod compiler;
@@ -49,6 +50,9 @@ fn run_file(vm: &mut Vm, path: &str) {
 }
 
 fn main() {
+
+    allocator::alloc_test();
+
     println!("value size:       {}", std::mem::size_of::<Value>());
     println!("instruction size: {}", std::mem::size_of::<Instruction>());
     let args: Vec<String> = env::args().collect();
