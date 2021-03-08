@@ -8,18 +8,34 @@ struct Reference<T> {
     _marker: std::marker::PhantomData<T>
 }
 
-#[derive(Default)]
 struct Allocator {
+    free_slots: Vec<usize>,
     objects: Vec<Option<Box<dyn Any>>>
 }
 
 impl Allocator {
+    fn new() -> Self {
+        Allocator {
+            free_slots: vec![],
+            objects: vec![]
+        }
+    }
     fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+        let entry: Option<Box<dyn Any>> = Some(Box::new(object));
+        let index = match self.free_slots.pop() {
+            Some(i) => {
+                self.objects[i] = entry;
+                i
+            },
+            None => {
+                self.objects.push(entry);
+                self.objects.len() - 1
+            }
+        };
         let reference = Reference {
-            index: self.objects.len(),
+            index,
             _marker: PhantomData
         };
-        self.objects.push(Some(Box::new(object)));
         reference
     }
 
@@ -28,7 +44,8 @@ impl Allocator {
     }
 
     fn free<T: Any>(&mut self, reference: &Reference<T>) {
-        self.objects[reference.index] = None
+        self.objects[reference.index] = None;
+        self.free_slots.push(reference.index)
     }
 }
 
@@ -40,7 +57,7 @@ struct Function {
 
 impl Drop for Function {
     fn drop(&mut self) {
-        println!("Destroying function {:?}", self);
+        // println!("Destroying function {:?}", self);
     }
 }
 
@@ -52,7 +69,7 @@ struct Closure  {
 
 pub fn alloc_test() {
     println!("Size of GC: {}", std::mem::size_of::<Reference<Function>>());
-    let mut allocator = Allocator::default();
+    let mut allocator = Allocator::new();
 
     let f = {
         let test_function = Function { a: 1, b: true};
@@ -83,7 +100,11 @@ pub fn alloc_test() {
         println!("f2: {}", allocator.deref(&f2).a);
     }
 
-    // {
-    //     println!("f: {}", allocator.deref(&f).a);
-    // }
+    let mut total = 0;
+    for x in 0..100_000_000 {
+        let f = allocator.alloc(Function { a: x, b: true});
+        total += allocator.deref(&f).a;
+        allocator.free(&f);
+    }
+    println!("total {}", total);
 }
