@@ -1,23 +1,22 @@
-use std::marker::PhantomData;
 use std::any::Any;
-
+use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
 struct Reference<T> {
     index: usize,
-    _marker: std::marker::PhantomData<T>
+    _marker: std::marker::PhantomData<T>,
 }
 
 struct Allocator {
     free_slots: Vec<usize>,
-    objects: Vec<Option<Box<dyn Any>>>
+    objects: Vec<Option<Box<dyn Any>>>,
 }
 
 impl Allocator {
     fn new() -> Self {
         Allocator {
             free_slots: vec![],
-            objects: vec![]
+            objects: vec![],
         }
     }
     fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
@@ -26,7 +25,7 @@ impl Allocator {
             Some(i) => {
                 self.objects[i] = entry;
                 i
-            },
+            }
             None => {
                 self.objects.push(entry);
                 self.objects.len() - 1
@@ -34,13 +33,17 @@ impl Allocator {
         };
         let reference = Reference {
             index,
-            _marker: PhantomData
+            _marker: PhantomData,
         };
         reference
     }
 
     fn deref<T: Any>(&self, reference: &Reference<T>) -> &T {
-        self.objects[reference.index].as_ref().unwrap().downcast_ref().unwrap()
+        self.objects[reference.index]
+            .as_ref()
+            .unwrap()
+            .downcast_ref()
+            .unwrap()
     }
 
     fn free<T: Any>(&mut self, reference: &Reference<T>) {
@@ -52,7 +55,7 @@ impl Allocator {
 #[derive(Debug)]
 struct Function {
     a: usize,
-    b: bool
+    b: bool,
 }
 
 impl Drop for Function {
@@ -61,10 +64,10 @@ impl Drop for Function {
     }
 }
 
-struct Closure  {
+struct Closure {
     a: f64,
     b: f64,
-    c: usize
+    c: usize,
 }
 
 pub fn alloc_test() {
@@ -72,15 +75,18 @@ pub fn alloc_test() {
     let mut allocator = Allocator::new();
 
     let f = {
-        let test_function = Function { a: 1, b: true};
+        let test_function = Function { a: 1, b: true };
         allocator.alloc(test_function)
     };
 
     let c = {
-        let test_closure = Closure { a: 28.0, b: 2.0, c: 100 };
+        let test_closure = Closure {
+            a: 28.0,
+            b: 2.0,
+            c: 100,
+        };
         allocator.alloc(test_closure)
     };
-
 
     {
         println!("f: {}", allocator.deref(&f).a);
@@ -91,7 +97,7 @@ pub fn alloc_test() {
     allocator.free(&f);
 
     let f2 = {
-        let test_function = Function { a: 5, b: false};
+        let test_function = Function { a: 5, b: false };
         allocator.alloc(test_function)
     };
 
@@ -102,7 +108,7 @@ pub fn alloc_test() {
 
     let mut total = 0;
     for x in 0..100_000_000 {
-        let f = allocator.alloc(Function { a: x, b: true});
+        let f = allocator.alloc(Function { a: x, b: true });
         total += allocator.deref(&f).a;
         allocator.free(&f);
     }

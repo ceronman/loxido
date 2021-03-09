@@ -50,7 +50,6 @@ fn run_file(vm: &mut Vm, path: &str) {
 }
 
 fn main() {
-
     allocator::alloc_test();
 
     println!("value size:       {}", std::mem::size_of::<Value>());
