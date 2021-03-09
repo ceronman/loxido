@@ -25,19 +25,9 @@ impl<T> Default for Reference<T> {
     }
 }
 
-impl<T> fmt::Debug for Reference<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Reference")
-            .field("index", &self.index)
-            .finish()
-    }
-}
-
 impl<T> fmt::Display for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Reference")
-            .field("index", &self.index)
-            .finish()
+        write!(f, "ref({})", self.index)
     }
 }
 
@@ -47,7 +37,7 @@ impl<T> PartialEq for Reference<T> {
     }
 }
 
-impl<T> hash::Hash for Reference<T> {
+impl hash::Hash for Reference<String> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.index.hash(state)
     }
@@ -56,13 +46,13 @@ impl<T> hash::Hash for Reference<T> {
 #[derive(Default)]
 pub struct Allocator {
     free_slots: Vec<usize>,
-    objects: Vec<Option<Box<dyn Any>>>,
+    objects: Vec<Box<dyn Any>>,
     strings: HashMap<String, Reference<String>>,
 }
 
 impl Allocator {
     fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
-        let entry: Option<Box<dyn Any>> = Some(Box::new(object));
+        let entry: Box<dyn Any> = Box::new(object);
         let index = match self.free_slots.pop() {
             Some(i) => {
                 self.objects[i] = entry;
@@ -94,17 +84,12 @@ impl Allocator {
         self.intern_owned(name.to_owned())
     }
 
-    pub fn deref<T: Any>(&self, reference: &Reference<T>) -> &T {
-        self.objects[reference.index]
-            .as_ref()
-            .unwrap()
-            .downcast_ref()
-            .unwrap()
+    pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
+        self.objects[reference.index].downcast_ref().unwrap()
     }
 
     #[allow(dead_code)]
-    fn free<T: Any>(&mut self, reference: &Reference<T>) {
-        self.objects[reference.index] = None;
+    fn free<T: Any>(&mut self, reference: Reference<T>) {
         self.free_slots.push(reference.index)
     }
 }

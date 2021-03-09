@@ -1,7 +1,7 @@
 use crate::{allocator::Reference, closure::ClosureId, function::FunctionId, function::NativeFn};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Value {
     Nil,
     Bool(bool),

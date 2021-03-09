@@ -156,8 +156,8 @@ impl Vm {
                         }
 
                         (Value::String(value_a), Value::String(value_b)) => {
-                            let s_a = self.allocator.deref(value_a);
-                            let s_b = self.allocator.deref(value_b);
+                            let s_a = self.allocator.deref(*value_a);
+                            let s_b = self.allocator.deref(*value_b);
                             let result = format!("{}{}", s_a, s_b);
                             let s = self.allocator.intern_owned(result);
                             let value = Value::String(s);
@@ -225,7 +225,7 @@ impl Vm {
                     match state.globals.get(&s) {
                         Some(&value) => state.push(value),
                         None => {
-                            let name = self.allocator.deref(&s);
+                            let name = self.allocator.deref(s);
                             let msg = format!("Undefined variable '{}'.", name);
                             return Err(self.runtime_error(&frame, &msg));
                         }
@@ -287,7 +287,7 @@ impl Vm {
                 Instruction::Print => {
                     let value = state.pop();
                     if let Value::String(s) = value {
-                        println!("{}", self.allocator.deref(&s))
+                        println!("{}", self.allocator.deref(s))
                     } else {
                         println!("{}", value);
                     }
@@ -313,7 +313,7 @@ impl Vm {
                     let value = state.peek(0);
                     if let None = state.globals.insert(name, value) {
                         state.globals.remove(&name);
-                        let s = self.allocator.deref(&name);
+                        let s = self.allocator.deref(name);
                         let msg = format!("Undefined variable '{}'.", s);
                         return Err(self.runtime_error(&frame, &msg));
                     }
