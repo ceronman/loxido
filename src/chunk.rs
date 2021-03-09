@@ -1,4 +1,4 @@
-use crate::{closure::ClosureId, function::FunctionId, function::NativeFn, strings::LoxString};
+use crate::{allocator::Reference, closure::ClosureId, function::FunctionId, function::NativeFn};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -6,7 +6,7 @@ pub enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    String(LoxString),
+    String(Reference<String>),
     Function(FunctionId),
     Closure(ClosureId),
     NativeFunction(NativeFn),
@@ -93,7 +93,7 @@ impl Chunk {
         self.constants[index as usize].clone()
     }
 
-    pub fn read_string(&self, index: u8) -> LoxString {
+    pub fn read_string(&self, index: u8) -> Reference<String> {
         if let Value::String(s) = self.read_constant(index) {
             s
         } else {

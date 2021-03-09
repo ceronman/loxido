@@ -1,10 +1,10 @@
 use crate::{
+    allocator::Allocator,
     chunk::{Instruction, Value},
     error::LoxError,
     function::Upvalue,
     function::{FunctionId, FunctionType, Functions, LoxFunction},
     scanner::{Scanner, Token, TokenType},
-    strings::Strings,
 };
 use std::collections::HashMap;
 use std::{convert::TryFrom, mem};
@@ -162,7 +162,7 @@ impl<'a> Compiler<'a> {
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
-    strings: &'a mut Strings,
+    allocator: &'a mut Allocator,
     functions: &'a mut Functions,
     current: Token<'a>,
     previous: Token<'a>,
@@ -174,7 +174,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(
         code: &'a str,
-        strings: &'a mut Strings,
+        allocator: &'a mut Allocator,
         functions: &'a mut Functions,
     ) -> Parser<'a> {
         let t1 = Token {
@@ -324,7 +324,7 @@ impl<'a> Parser<'a> {
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(None, FunctionType::Script),
-            strings,
+            allocator,
             functions,
             current: t1,
             previous: t2,
@@ -391,7 +391,7 @@ impl<'a> Parser<'a> {
         let new_compiler = Compiler::new(None, kind);
         let old_compiler = mem::replace(&mut self.compiler, new_compiler);
         self.compiler.enclosing = Some(old_compiler);
-        let function_name = self.strings.intern(self.previous.lexeme);
+        let function_name = self.allocator.intern(self.previous.lexeme);
         self.compiler.function.name = function_name;
     }
 
@@ -617,7 +617,7 @@ impl<'a> Parser<'a> {
     fn string(&mut self, _can_assing: bool) {
         let lexeme = self.previous.lexeme;
         let value = &lexeme[1..(lexeme.len() - 1)];
-        let s = self.strings.intern(value);
+        let s = self.allocator.intern(value);
         self.emit_constant(Value::String(s));
     }
 
@@ -795,7 +795,7 @@ impl<'a> Parser<'a> {
     }
 
     fn identifier_constant(&mut self, token: Token) -> u8 {
-        let identifier = self.strings.intern(token.lexeme);
+        let identifier = self.allocator.intern(token.lexeme);
         let value = Value::String(identifier);
         self.make_constant(value)
     }

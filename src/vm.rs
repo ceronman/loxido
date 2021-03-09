@@ -1,6 +1,7 @@
 use cpu_time::ProcessTime;
 
 use crate::{
+    allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     closure::Closure,
     closure::ClosureId,
@@ -10,7 +11,6 @@ use crate::{
     error::LoxError,
     function::NativeFn,
     function::{FunctionId, Functions},
-    strings::{LoxString, Strings},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -38,7 +38,7 @@ const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
 pub struct ExecutionState {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
-    globals: HashMap<LoxString, Value>,
+    globals: HashMap<Reference<String>, Value>,
     closures: Closures,
     open_upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
 }
@@ -52,7 +52,7 @@ fn clock(_args: &[Value]) -> Value {
 }
 
 impl ExecutionState {
-    pub fn new(strings: &mut Strings) -> Self {
+    pub fn new(allocator: &mut Allocator) -> Self {
         let mut state = Self {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
@@ -60,7 +60,7 @@ impl ExecutionState {
             closures: Closures::default(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
-        state.define_native(strings, "clock", NativeFn(clock));
+        state.define_native(allocator, "clock", NativeFn(clock));
         state
     }
 
@@ -78,25 +78,25 @@ impl ExecutionState {
         self.stack[size - 1 - n]
     }
 
-    fn define_native(&mut self, strings: &mut Strings, name: &str, native: NativeFn) {
-        let name_id = strings.intern(name);
+    fn define_native(&mut self, allocator: &mut Allocator, name: &str, native: NativeFn) {
+        let name_id = allocator.intern(name);
         self.globals.insert(name_id, Value::NativeFunction(native));
     }
 }
 
 #[derive(Default)]
 pub struct Vm {
-    strings: Strings,
+    allocator: Allocator,
     functions: Functions,
 }
 
 impl Vm {
     pub fn new_state(&mut self) -> ExecutionState {
-        ExecutionState::new(&mut self.strings)
+        ExecutionState::new(&mut self.allocator)
     }
 
     pub fn interpret(&mut self, code: &str, state: &mut ExecutionState) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.strings, &mut self.functions);
+        let parser = Parser::new(code, &mut self.allocator, &mut self.functions);
         let function = parser.compile()?;
         let closure = Closure::new(function);
         let closure_id = state.closures.store(closure);
@@ -156,10 +156,10 @@ impl Vm {
                         }
 
                         (Value::String(value_a), Value::String(value_b)) => {
-                            let s_a = self.strings.lookup(*value_a);
-                            let s_b = self.strings.lookup(*value_b);
+                            let s_a = self.allocator.deref(value_a);
+                            let s_b = self.allocator.deref(value_b);
                             let result = format!("{}{}", s_a, s_b);
-                            let s = self.strings.intern_onwed(result);
+                            let s = self.allocator.intern_owned(result);
                             let value = Value::String(s);
                             state.push(value);
                         }
@@ -225,7 +225,7 @@ impl Vm {
                     match state.globals.get(&s) {
                         Some(&value) => state.push(value),
                         None => {
-                            let name = self.strings.lookup(s);
+                            let name = self.allocator.deref(&s);
                             let msg = format!("Undefined variable '{}'.", name);
                             return Err(self.runtime_error(&frame, &msg));
                         }
@@ -287,7 +287,7 @@ impl Vm {
                 Instruction::Print => {
                     let value = state.pop();
                     if let Value::String(s) = value {
-                        println!("{}", self.strings.lookup(s))
+                        println!("{}", self.allocator.deref(&s))
                     } else {
                         println!("{}", value);
                     }
@@ -313,7 +313,7 @@ impl Vm {
                     let value = state.peek(0);
                     if let None = state.globals.insert(name, value) {
                         state.globals.remove(&name);
-                        let s = self.strings.lookup(name);
+                        let s = self.allocator.deref(&name);
                         let msg = format!("Undefined variable '{}'.", s);
                         return Err(self.runtime_error(&frame, &msg));
                     }

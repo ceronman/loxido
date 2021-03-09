@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{chunk::Chunk, chunk::Value, strings::LoxString};
+use crate::{allocator::Reference, chunk::Chunk, chunk::Value};
 
 pub enum FunctionType {
     Function,
@@ -32,7 +32,7 @@ pub struct Upvalue {
 pub struct LoxFunction {
     pub arity: usize,
     pub chunk: Chunk,
-    pub name: LoxString,
+    pub name: Reference<String>,
     pub upvalues: Vec<Upvalue>,
 }
 
