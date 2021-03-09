@@ -43,6 +43,8 @@ impl hash::Hash for Reference<String> {
     }
 }
 
+struct Empty;
+
 #[derive(Default)]
 pub struct Allocator {
     free_slots: Vec<usize>,
@@ -90,6 +92,7 @@ impl Allocator {
 
     #[allow(dead_code)]
     fn free<T: Any>(&mut self, reference: Reference<T>) {
+        self.objects[reference.index] = Box::new(Empty {});
         self.free_slots.push(reference.index)
     }
 }
