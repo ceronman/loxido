@@ -2,27 +2,26 @@ use cpu_time::ProcessTime;
 
 use crate::{
     allocator::{Allocator, Reference},
-    chunk::{Instruction, Value},
+    chunk::{Chunk, Instruction, Value},
     closure::Closure,
     closure::ClosureId,
     closure::Closures,
     closure::ObjUpvalue,
     compiler::Parser,
     error::LoxError,
-    function::NativeFn,
-    function::{FunctionId, Functions},
+    function::{LoxFunction, NativeFn},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 struct CallFrame {
-    function: FunctionId,
+    function: Reference<LoxFunction>,
     closure: ClosureId,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(function: FunctionId, closure: ClosureId) -> Self {
+    fn new(function: Reference<LoxFunction>, closure: ClosureId) -> Self {
         CallFrame {
             function,
             closure,
@@ -82,12 +81,17 @@ impl ExecutionState {
         let name_id = allocator.intern(name);
         self.globals.insert(name_id, Value::NativeFunction(native));
     }
+
+    fn chunk_for<'a>(&self, allocator: &'a Allocator, frame: &CallFrame) -> &'a Chunk {
+        let closure = self.closures.lookup(frame.closure);
+        let function = allocator.deref(closure.function);
+        &function.chunk
+    }
 }
 
 #[derive(Default)]
 pub struct Vm {
     allocator: Allocator,
-    functions: Functions,
 }
 
 impl Vm {
@@ -96,7 +100,7 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, code: &str, state: &mut ExecutionState) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.allocator, &mut self.functions);
+        let parser = Parser::new(code, &mut self.allocator);
         let function = parser.compile()?;
         let closure = Closure::new(function);
         let closure_id = state.closures.store(closure);
@@ -125,14 +129,8 @@ impl Vm {
     fn run(&mut self, state: &mut ExecutionState) -> Result<(), LoxError> {
         let mut frame = state.frames.pop().unwrap();
 
-        // TODO: Maybe get rid of this references and use only frame
-        let mut chunk = {
-            let closure = state.closures.lookup(frame.closure);
-            &self.functions.lookup(closure.function).chunk
-        };
-
         loop {
-            let instruction = chunk.code[frame.ip];
+            let instruction = state.chunk_for(&self.allocator, &frame).code[frame.ip];
 
             #[cfg(debug_assertions)]
             {
@@ -142,7 +140,9 @@ impl Vm {
                 println!("");
 
                 #[cfg(debug_assertions)]
-                chunk.disassemble_instruction(&instruction, frame.ip);
+                state
+                    .chunk_for(&self.allocator, &frame)
+                    .disassemble_instruction(&instruction, frame.ip);
             }
 
             frame.ip += 1;
@@ -177,9 +177,11 @@ impl Vm {
                     state.pop();
                 }
                 Instruction::Closure(index) => {
-                    let c = chunk.read_constant(index);
+                    let c = state
+                        .chunk_for(&self.allocator, &frame)
+                        .read_constant(index);
                     if let Value::Function(function_id) = c {
-                        let function = self.functions.lookup(function_id);
+                        let function = self.allocator.deref(function_id);
                         let mut new_closure = Closure::new(function_id);
 
                         for upvalue in function.upvalues.iter() {
@@ -200,14 +202,15 @@ impl Vm {
                 Instruction::Call(arg_count) => {
                     // TODO: Unify duplicated functionality also in return
                     frame = self.call_value(frame, state, arg_count)?;
-                    chunk = &self.functions.lookup(frame.function).chunk;
                 }
                 Instruction::Constant(index) => {
-                    let value = chunk.read_constant(index);
+                    let value = state
+                        .chunk_for(&self.allocator, &frame)
+                        .read_constant(index);
                     state.push(value);
                 }
                 Instruction::DefineGlobal(index) => {
-                    let s = chunk.read_string(index);
+                    let s = state.chunk_for(&self.allocator, &frame).read_string(index);
                     let value = state.pop();
                     state.globals.insert(s, value);
                 }
@@ -221,7 +224,7 @@ impl Vm {
                 }
                 Instruction::False => state.push(Value::Bool(false)),
                 Instruction::GetGlobal(index) => {
-                    let s = chunk.read_string(index);
+                    let s = state.chunk_for(&self.allocator, &frame).read_string(index);
                     match state.globals.get(&s) {
                         Some(&value) => state.push(value),
                         None => {
@@ -300,7 +303,6 @@ impl Vm {
                             state.stack.truncate(frame.slot);
                             state.push(value);
                             frame = f;
-                            chunk = &self.functions.lookup(frame.function).chunk;
                         }
                         None => {
                             return Ok(());
@@ -309,7 +311,7 @@ impl Vm {
                 }
                 Instruction::SetGlobal(index) => {
                     // TODO: refactor long indirection?
-                    let name = chunk.read_string(index);
+                    let name = state.chunk_for(&self.allocator, &frame).read_string(index);
                     let value = state.peek(0);
                     if let None = state.globals.insert(name, value) {
                         state.globals.remove(&name);
@@ -399,7 +401,7 @@ impl Vm {
     ) -> Result<CallFrame, LoxError> {
         let closure = state.closures.lookup(closure_id);
         // TODO: Inefficient double lookup;
-        let f = self.functions.lookup(closure.function);
+        let f = self.allocator.deref(closure.function);
         if (arg_count as usize) != f.arity {
             let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
             Err(self.runtime_error(&frame, &msg))
@@ -417,7 +419,7 @@ impl Vm {
     // TODO: Maybe return Err(RuntimeError) directly?
     fn runtime_error(&self, frame: &CallFrame, msg: &str) -> LoxError {
         eprintln!("{}", msg);
-        let chunk = &self.functions.lookup(frame.function).chunk;
+        let chunk = &self.allocator.deref(frame.function).chunk;
         let line = chunk.lines[frame.ip - 1];
         eprintln!("[line {}] in script", line);
         LoxError::RuntimeError

@@ -1,4 +1,8 @@
-use crate::{allocator::Reference, closure::ClosureId, function::FunctionId, function::NativeFn};
+use crate::{
+    allocator::Reference,
+    closure::ClosureId,
+    function::{LoxFunction, NativeFn},
+};
 use std::fmt;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -7,7 +11,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(Reference<String>),
-    Function(FunctionId),
+    Function(Reference<LoxFunction>),
     Closure(ClosureId),
     NativeFunction(NativeFn),
 }

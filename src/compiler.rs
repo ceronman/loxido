@@ -1,9 +1,9 @@
 use crate::{
-    allocator::Allocator,
+    allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     error::LoxError,
     function::Upvalue,
-    function::{FunctionId, FunctionType, Functions, LoxFunction},
+    function::{FunctionType, LoxFunction},
     scanner::{Scanner, Token, TokenType},
 };
 use std::collections::HashMap;
@@ -163,7 +163,6 @@ pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
     allocator: &'a mut Allocator,
-    functions: &'a mut Functions,
     current: Token<'a>,
     previous: Token<'a>,
     had_error: bool,
@@ -172,11 +171,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(
-        code: &'a str,
-        allocator: &'a mut Allocator,
-        functions: &'a mut Functions,
-    ) -> Parser<'a> {
+    pub fn new(code: &'a str, allocator: &'a mut Allocator) -> Parser<'a> {
         let t1 = Token {
             kind: TokenType::Eof,
             lexeme: "",
@@ -325,7 +320,6 @@ impl<'a> Parser<'a> {
             scanner: Scanner::new(code),
             compiler: Compiler::new(None, FunctionType::Script),
             allocator,
-            functions,
             current: t1,
             previous: t2,
             had_error: false,
@@ -334,7 +328,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn compile(mut self) -> Result<FunctionId, LoxError> {
+    pub fn compile(mut self) -> Result<Reference<LoxFunction>, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -352,7 +346,7 @@ impl<'a> Parser<'a> {
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
-            Ok(self.functions.store(self.compiler.function))
+            Ok(self.allocator.alloc(self.compiler.function))
         }
     }
 
@@ -429,7 +423,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
         let function = self.pop_compiler();
-        let fn_id = self.functions.store(function);
+        let fn_id = self.allocator.alloc(function);
 
         // TODO: these two lines are very similar to emit_constant
         let index = self.make_constant(Value::Function(fn_id));

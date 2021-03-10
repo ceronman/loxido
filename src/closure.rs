@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{chunk::Value, function::FunctionId};
+use crate::{allocator::Reference, chunk::Value, function::LoxFunction};
 
 pub struct ObjUpvalue {
     pub location: usize, // TODO: Make this a proper type
@@ -17,12 +17,12 @@ impl ObjUpvalue {
 }
 
 pub struct Closure {
-    pub function: FunctionId,
+    pub function: Reference<LoxFunction>,
     pub upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
 }
 
 impl Closure {
-    pub fn new(function: FunctionId) -> Self {
+    pub fn new(function: Reference<LoxFunction>) -> Self {
         Closure {
             function,
             upvalues: Vec::new(),

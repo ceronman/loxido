@@ -53,7 +53,7 @@ pub struct Allocator {
 }
 
 impl Allocator {
-    fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
         let entry: Box<dyn Any> = Box::new(object);
         let index = match self.free_slots.pop() {
             Some(i) => {

@@ -21,8 +21,6 @@ impl PartialEq for NativeFn {
     }
 }
 
-pub type FunctionId = usize;
-
 pub struct Upvalue {
     pub index: u8,
     pub is_local: bool,
@@ -34,20 +32,4 @@ pub struct LoxFunction {
     pub chunk: Chunk,
     pub name: Reference<String>,
     pub upvalues: Vec<Upvalue>,
-}
-
-#[derive(Default)]
-pub struct Functions {
-    functions: Vec<LoxFunction>,
-}
-
-impl Functions {
-    pub fn lookup(&self, id: FunctionId) -> &LoxFunction {
-        &self.functions[id]
-    }
-
-    pub fn store(&mut self, function: LoxFunction) -> FunctionId {
-        self.functions.push(function);
-        self.functions.len() - 1
-    }
 }
