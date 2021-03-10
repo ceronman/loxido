@@ -4,8 +4,6 @@ use crate::{
     allocator::{Allocator, Reference},
     chunk::{Chunk, Instruction, Value},
     closure::Closure,
-    closure::ClosureId,
-    closure::Closures,
     closure::ObjUpvalue,
     compiler::Parser,
     error::LoxError,
@@ -15,13 +13,13 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 struct CallFrame {
     function: Reference<LoxFunction>,
-    closure: ClosureId,
+    closure: Reference<Closure>,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(function: Reference<LoxFunction>, closure: ClosureId) -> Self {
+    fn new(function: Reference<LoxFunction>, closure: Reference<Closure>) -> Self {
         CallFrame {
             function,
             closure,
@@ -38,7 +36,6 @@ pub struct ExecutionState {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
-    closures: Closures,
     open_upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
 }
 
@@ -56,7 +53,6 @@ impl ExecutionState {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
-            closures: Closures::default(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
         state.define_native(allocator, "clock", NativeFn(clock));
@@ -83,7 +79,7 @@ impl ExecutionState {
     }
 
     fn chunk_for<'a>(&self, allocator: &'a Allocator, frame: &CallFrame) -> &'a Chunk {
-        let closure = self.closures.lookup(frame.closure);
+        let closure = allocator.deref(frame.closure);
         let function = allocator.deref(closure.function);
         &function.chunk
     }
@@ -103,7 +99,7 @@ impl Vm {
         let parser = Parser::new(code, &mut self.allocator);
         let function = parser.compile()?;
         let closure = Closure::new(function);
-        let closure_id = state.closures.store(closure);
+        let closure_id = self.allocator.alloc(closure);
         state.frames.push(CallFrame::new(function, closure_id));
         self.run(state)
     }
@@ -189,13 +185,13 @@ impl Vm {
                                 // TODO: unify u8 vs usize everywhere
                                 self.capture_value(state, frame.slot + upvalue.index as usize)
                             } else {
-                                let current_closure = state.closures.lookup(frame.closure);
+                                let current_closure = self.allocator.deref(frame.closure);
                                 current_closure.upvalues[upvalue.index as usize].clone()
                             };
                             new_closure.upvalues.push(obj_upvalue)
                         }
 
-                        let closure_id = state.closures.store(new_closure);
+                        let closure_id = self.allocator.alloc(new_closure);
                         state.push(Value::Closure(closure_id));
                     }
                 }
@@ -241,7 +237,7 @@ impl Vm {
                 }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
-                        let current_closure = state.closures.lookup(frame.closure);
+                        let current_closure = self.allocator.deref(frame.closure);
                         let upvalue = current_closure.upvalues[slot as usize].borrow();
                         if let Some(value) = upvalue.closed {
                             value
@@ -327,7 +323,7 @@ impl Vm {
                 }
                 Instruction::SetUpvalue(slot) => {
                     // TODO: current_closure dance is repeated a lot.
-                    let current_closure = state.closures.lookup(frame.closure);
+                    let current_closure = self.allocator.deref(frame.closure);
                     let mut upvalue = current_closure.upvalues[slot as usize].borrow_mut();
                     let value = state.peek(0);
                     if let None = upvalue.closed {
@@ -396,10 +392,10 @@ impl Vm {
         &self,
         frame: CallFrame,
         state: &mut ExecutionState,
-        closure_id: ClosureId,
+        closure_id: Reference<Closure>,
         arg_count: u8,
     ) -> Result<CallFrame, LoxError> {
-        let closure = state.closures.lookup(closure_id);
+        let closure = self.allocator.deref(closure_id);
         // TODO: Inefficient double lookup;
         let f = self.allocator.deref(closure.function);
         if (arg_count as usize) != f.arity {

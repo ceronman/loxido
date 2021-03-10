@@ -1,6 +1,6 @@
 use crate::{
     allocator::Reference,
-    closure::ClosureId,
+    closure::Closure,
     function::{LoxFunction, NativeFn},
 };
 use std::fmt;
@@ -12,7 +12,7 @@ pub enum Value {
     Number(f64),
     String(Reference<String>),
     Function(Reference<LoxFunction>),
-    Closure(ClosureId),
+    Closure(Reference<Closure>),
     NativeFunction(NativeFn),
 }
 
