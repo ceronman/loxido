@@ -21,6 +21,7 @@ impl PartialEq for NativeFn {
     }
 }
 
+// TODO: Only needed because of clone() done in Closure instruction
 #[derive(Copy, Clone)]
 pub struct Upvalue {
     pub index: u8,

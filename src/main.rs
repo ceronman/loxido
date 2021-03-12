@@ -18,7 +18,6 @@ use vm::Vm;
 extern crate lazy_static;
 
 fn repl(vm: &mut Vm) {
-    let mut state = vm.new_state();
     loop {
         print!("> ");
         io::stdout().flush().unwrap();
@@ -29,7 +28,7 @@ fn repl(vm: &mut Vm) {
         if line.len() == 0 {
             break;
         }
-        vm.interpret(&line, &mut state).ok();
+        vm.interpret(&line).ok();
     }
 }
 
@@ -41,8 +40,7 @@ fn run_file(vm: &mut Vm, path: &str) {
             process::exit(74);
         }
     };
-    let mut state = vm.new_state();
-    match vm.interpret(&code, &mut state) {
+    match vm.interpret(&code) {
         Ok(_) => process::exit(65),
         _ => process::exit(70),
     };
@@ -52,7 +50,7 @@ fn main() {
     println!("value size:       {}", std::mem::size_of::<Value>());
     println!("instruction size: {}", std::mem::size_of::<Instruction>());
     let args: Vec<String> = env::args().collect();
-    let mut vm = Vm::default();
+    let mut vm = Vm::new();
     match args.len() {
         1 => repl(&mut vm),
         2 => run_file(&mut vm, &args[1]),
