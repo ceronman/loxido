@@ -21,6 +21,7 @@ impl PartialEq for NativeFn {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Upvalue {
     pub index: u8,
     pub is_local: bool,
