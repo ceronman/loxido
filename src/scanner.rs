@@ -131,7 +131,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn is_at_end(&self) -> bool {
-        return self.current == self.code.len() - 1;
+        return self.current == self.code.len();
     }
 
     fn lexeme(&self) -> &'a str {

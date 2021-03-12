@@ -131,6 +131,3 @@ test_strings();
 test_if();
 test_loops();
 test_functions();
-
-// BUG: string concatenation with number
-// BUG: las character is a semicolon
