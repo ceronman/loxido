@@ -41,12 +41,18 @@ fn clock(_allocator: &Allocator, _args: &[Value]) -> Value {
 }
 
 fn lox_panic(allocator: &Allocator, args: &[Value]) -> Value {
-    let arg = args[0];
-    let s = match arg {
-        Value::String(str_ref) => allocator.deref(str_ref),
-        _ => "unknown",
-    };
-    panic!("panic: {}", s)
+    let mut terms: Vec<String> = vec![];
+
+    for arg in args.iter() {
+        let term = if let Value::String(s) = *arg {
+            format!("{}", allocator.deref(s))
+        } else {
+            format!("{}", arg)
+        };
+        terms.push(term);
+    }
+
+    panic!("panic: {}", terms.join(", "))
 }
 
 pub struct Vm {
@@ -372,6 +378,8 @@ impl Vm {
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count as usize;
                 let result = native.0(&self.allocator, &self.stack[left..]);
+                self.stack
+                    .truncate(self.stack.len() - arg_count as usize - 1);
                 self.push(result);
                 Ok(frame)
             }
