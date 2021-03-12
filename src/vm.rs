@@ -36,8 +36,17 @@ lazy_static! {
     static ref BEGIN_OF_PROGRAM: ProcessTime = ProcessTime::now();
 }
 
-fn clock(_args: &[Value]) -> Value {
+fn clock(_allocator: &Allocator, _args: &[Value]) -> Value {
     Value::Number(BEGIN_OF_PROGRAM.elapsed().as_secs_f64())
+}
+
+fn lox_panic(allocator: &Allocator, args: &[Value]) -> Value {
+    let arg = args[0];
+    let s = match arg {
+        Value::String(str_ref) => allocator.deref(str_ref),
+        _ => "unknown",
+    };
+    panic!("panic: {}", s)
 }
 
 pub struct Vm {
@@ -58,6 +67,7 @@ impl Vm {
             open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
         vm.define_native("clock", NativeFn(clock));
+        vm.define_native("panic", NativeFn(lox_panic));
         vm
     }
 
@@ -361,7 +371,7 @@ impl Vm {
             Value::Closure(cid) => self.call(frame, cid, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count as usize;
-                let result = native.0(&self.stack[left..]);
+                let result = native.0(&self.allocator, &self.stack[left..]);
                 self.push(result);
                 Ok(frame)
             }

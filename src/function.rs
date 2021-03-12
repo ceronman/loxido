@@ -1,13 +1,18 @@
 use std::fmt;
 
-use crate::{allocator::Reference, chunk::Chunk, chunk::Value};
+use crate::{
+    allocator::{Allocator, Reference},
+    chunk::Chunk,
+    chunk::Value,
+};
 
 pub enum FunctionType {
     Function,
     Script,
 }
+
 #[derive(Clone, Copy)]
-pub struct NativeFn(pub fn(&[Value]) -> Value);
+pub struct NativeFn(pub fn(&Allocator, &[Value]) -> Value);
 
 impl fmt::Debug for NativeFn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
