@@ -1,9 +1,136 @@
-for
-(
-var a = 1;
-a < 3;
-a = a + 1
-)
-{ 
-print "foo"; 
+fun assert_eq(a, b) {
+    if (a != b) {
+        panic("assertion failed", a, b);
+    }
 }
+
+fun assert_true(a) {
+    if (!a) {
+        panic("assertion failed", a);
+    }
+}
+
+fun assert_false(a) {
+    if (a) {
+        panic("assertion failed", a);
+    }
+}
+
+fun test_arithmetic() {
+    assert_eq(2 * 3, 6);
+    assert_eq(2 + 3, 5);
+    assert_eq(30 - 20, 10);
+    assert_eq(100 / 4, 25);
+
+    var a = 25;
+    var b = 4;
+    assert_eq(100, a * b);
+
+    assert_eq(100 + 2 * 5, 110);
+    assert_eq((100 + 2) * 5, 510);
+}
+
+fun test_boolean() {
+    assert_true(true);
+    assert_true(!false);
+    assert_true(true and true);
+    assert_false(true and false);
+    assert_true(true or false);
+    assert_true(false or true);
+    assert_true(10 > 5);
+    assert_false(10 < 5);
+    assert_true(10 >= 5);
+    assert_true(10 >= 10);
+    assert_false(10 > 10);
+}
+
+fun test_strings() {
+    var a = "hello" + " world";
+    assert_eq("hello world", a);
+}
+
+fun test_if() {
+    var a = 0;
+    if (5 < 10) {
+        a = 1;
+    } else {
+        a = 2;
+    }
+
+    assert_eq(1, a);
+
+    if (5 > 10) {
+        a = 1;
+    } else {
+        a = 2;
+    }
+
+    assert_eq(2, a);
+}
+
+fun test_loops() {
+    var a = 5;
+    while (a > 0) {
+        a = a - 1;
+    }
+    assert_eq(0, a);
+
+    var b = 0;
+    for (var i = 1; i < 100; i = i + 1) {
+        b = b + i;
+    }
+    assert_eq(4950, b);
+}
+
+fun test_functions() {
+    fun a() {
+        return 1;
+    }
+
+    assert_eq(1, a());
+
+    fun b(x, y) {
+        return x + y;
+    }
+
+    assert_eq(15, b(10, 5));
+
+    var result = nil;
+    fun makeClosure() {
+        var local = "local";
+        fun closure() {
+            print local;
+            result = "result";
+        }
+        return closure;
+    }
+
+    var closure = makeClosure();
+    closure();
+
+    assert_eq("result", result);
+
+    fun makeClosure2(value) {
+        fun closure() {
+            print value;
+        }
+        return closure;
+    }
+
+    var doughnut = makeClosure2("doughnut");
+    var bagel = makeClosure2("bagel");
+    doughnut();
+    bagel();
+}
+
+
+
+test_arithmetic();
+test_boolean();
+test_strings();
+test_if();
+test_loops();
+test_functions();
+
+// BUG: string concatenation with number
+// BUG: las character is a semicolon
