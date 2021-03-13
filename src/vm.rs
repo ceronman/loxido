@@ -4,12 +4,12 @@ use crate::{
     allocator::{Allocator, Reference},
     chunk::{Chunk, Instruction, Value},
     closure::Closure,
-    closure::ObjUpvalue,
+    closure::OpenUpvalues,
     compiler::Parser,
     error::LoxError,
     function::{LoxFunction, NativeFn},
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 struct CallFrame {
     function: Reference<LoxFunction>,
@@ -60,7 +60,7 @@ pub struct Vm {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
-    open_upvalues: Vec<Rc<RefCell<ObjUpvalue>>>,
+    open_upvalues: OpenUpvalues,
 }
 
 impl Vm {
@@ -70,7 +70,7 @@ impl Vm {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
-            open_upvalues: Vec::with_capacity(STACK_SIZE),
+            open_upvalues: OpenUpvalues::new(STACK_SIZE),
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -183,19 +183,19 @@ impl Vm {
                 }
                 Instruction::CloseUpvalue => {
                     let stack_top = self.stack.len() - 1;
-                    self.close_upvalues(stack_top);
+                    self.open_upvalues.close_upvalues(&self.stack, stack_top);
                     self.pop();
                 }
                 Instruction::Closure(index) => {
                     let c = self.chunk_for(&frame).read_constant(index);
                     if let Value::Function(function_id) = c {
-                        let upvalues = self.allocator.deref(function_id).upvalues.clone(); // TODO: get rid of clone() :'(
+                        let upvalues = self.allocator.deref(function_id).upvalues.iter();
                         let mut new_closure = Closure::new(function_id);
 
                         for upvalue in upvalues {
                             let obj_upvalue = if upvalue.is_local {
                                 // TODO: unify u8 vs usize everywhere
-                                self.capture_value(frame.slot + upvalue.index as usize)
+                                self.open_upvalues.capture(upvalue.index as usize)
                             } else {
                                 let current_closure = self.allocator.deref(frame.closure);
                                 current_closure.upvalues[upvalue.index as usize].clone()
@@ -299,7 +299,7 @@ impl Vm {
                 }
                 Instruction::Return => {
                     let value = self.pop();
-                    self.close_upvalues(frame.slot);
+                    self.open_upvalues.close_upvalues(&self.stack, frame.slot);
                     match self.frames.pop() {
                         Some(f) => {
                             self.stack.truncate(frame.slot);
@@ -344,31 +344,6 @@ impl Vm {
                 Instruction::True => self.push(Value::Bool(true)),
             };
         }
-    }
-
-    fn close_upvalues(&mut self, last: usize) {
-        let mut i = 0;
-        while i != self.open_upvalues.len() {
-            if self.open_upvalues[i].borrow().location >= last {
-                let upvalue = self.open_upvalues.remove(i);
-                let location = upvalue.borrow().location;
-                upvalue.borrow_mut().closed = Some(self.stack[location]);
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    fn capture_value(&mut self, location: usize) -> Rc<RefCell<ObjUpvalue>> {
-        for upvalue in self.open_upvalues.iter() {
-            if upvalue.borrow().location == location {
-                return Rc::clone(upvalue);
-            }
-        }
-        let upvalue = ObjUpvalue::new(location);
-        let upvalue = Rc::new(RefCell::new(upvalue));
-        self.open_upvalues.push(Rc::clone(&upvalue));
-        upvalue
     }
 
     fn call_value(&mut self, frame: CallFrame, arg_count: u8) -> Result<CallFrame, LoxError> {
