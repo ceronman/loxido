@@ -8,6 +8,7 @@ mod scanner;
 mod vm;
 
 use chunk::{Instruction, Value};
+use error::LoxError;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -40,10 +41,12 @@ fn run_file(vm: &mut Vm, path: &str) {
             process::exit(74);
         }
     };
-    match vm.interpret(&code) {
-        Ok(_) => process::exit(65),
-        _ => process::exit(70),
-    };
+    if let Err(error) = vm.interpret(&code) {
+        match error {
+            LoxError::CompileError => process::exit(65),
+            LoxError::RuntimeError => process::exit(70)
+        }
+    }
 }
 
 fn main() {
