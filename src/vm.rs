@@ -9,7 +9,7 @@ use crate::{
     error::LoxError,
     function::{LoxFunction, NativeFn},
 };
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 
 struct CallFrame {
     function: Reference<LoxFunction>,
@@ -112,10 +112,10 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.allocator);
+        let parser = Parser::new(code, self);
         let function = parser.compile()?;
         let closure = Closure::new(function);
-        let closure_id = self.allocator.alloc(closure);
+        let closure_id = self.alloc(closure);
         self.frames.push(CallFrame::new(function, closure_id));
         self.run()
     }
@@ -203,7 +203,7 @@ impl Vm {
                             new_closure.upvalues.push(obj_upvalue)
                         }
 
-                        let closure_id = self.allocator.alloc(new_closure);
+                        let closure_id = self.alloc(new_closure);
                         self.push(Value::Closure(closure_id));
                     }
                 }
@@ -383,5 +383,15 @@ impl Vm {
             frame.slot = self.stack.len() - (arg_count as usize) - 1;
             Ok(frame)
         }
+    }
+
+    pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+        self.allocator
+            .alloc_gc(object, &self.stack, &self.globals, &self.open_upvalues)
+    }
+
+    pub fn intern(&mut self, name: &str) -> Reference<String> {
+        self.allocator
+            .intern_gc(name, &self.stack, &self.globals, &self.open_upvalues)
     }
 }

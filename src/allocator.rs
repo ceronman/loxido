@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::{any::Any, collections::HashMap, fmt, hash};
 
+use crate::{chunk::Value, closure::OpenUpvalues};
+
 pub struct Reference<T> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
@@ -70,6 +72,26 @@ impl Allocator {
             _marker: PhantomData,
         };
         reference
+    }
+
+    pub fn alloc_gc<T: Any>(
+        &mut self,
+        object: T,
+        _stack: &Vec<Value>,
+        _globals: &HashMap<Reference<String>, Value>,
+        _open_upvalues: &OpenUpvalues,
+    ) -> Reference<T> {
+        self.alloc(object)
+    }
+
+    pub fn intern_gc(
+        &mut self,
+        name: &str,
+        _stack: &Vec<Value>,
+        _globals: &HashMap<Reference<String>, Value>,
+        _open_upvalues: &OpenUpvalues,
+    ) -> Reference<String> {
+        self.intern(name)
     }
 
     pub fn intern_owned(&mut self, name: String) -> Reference<String> {
