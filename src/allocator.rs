@@ -47,16 +47,34 @@ impl hash::Hash for Reference<String> {
 
 struct Empty;
 
+struct ObjHeader {
+    #[allow(dead_code)]
+    is_marked: bool,
+    obj: Box<dyn Any>
+}
+
+impl ObjHeader {
+    fn empty() -> Self {
+        ObjHeader {
+            is_marked: false,
+            obj: Box::new(Empty {})
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Allocator {
     free_slots: Vec<usize>,
-    objects: Vec<Box<dyn Any>>,
+    objects: Vec<ObjHeader>,
     strings: HashMap<String, Reference<String>>,
 }
 
 impl Allocator {
     pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
-        let entry: Box<dyn Any> = Box::new(object);
+        let entry = ObjHeader {
+            is_marked: false,
+            obj: Box::new(object)
+        };
         let index = match self.free_slots.pop() {
             Some(i) => {
                 self.objects[i] = entry;
@@ -109,12 +127,12 @@ impl Allocator {
     }
 
     pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
-        self.objects[reference.index].downcast_ref().unwrap()
+        self.objects[reference.index].obj.downcast_ref().unwrap()
     }
 
     #[allow(dead_code)]
     fn free<T: Any>(&mut self, reference: Reference<T>) {
-        self.objects[reference.index] = Box::new(Empty {});
+        self.objects[reference.index] = ObjHeader::empty();
         self.free_slots.push(reference.index)
     }
 }
