@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::{any::Any, collections::HashMap, fmt, hash};
 
-use crate::{chunk::Value, closure::OpenUpvalues};
+use crate::{chunk::Value, closure::OpenUpvalues, vm::CallFrame};
 
 const DEBUG_GC: bool = true;
 
@@ -97,10 +97,14 @@ impl Allocator {
     pub fn alloc_gc<T: Any>(
         &mut self,
         object: T,
-        _stack: &Vec<Value>,
-        _globals: &HashMap<Reference<String>, Value>,
-        _open_upvalues: &OpenUpvalues,
+        stack: &Vec<Value>,
+        globals: &HashMap<Reference<String>, Value>,
+        frames: &Vec<CallFrame>,
+        open_upvalues: &OpenUpvalues,
     ) -> Reference<T> {
+        if DEBUG_GC {
+            self.mark_roots(stack, globals, frames, open_upvalues);
+        }
         self.alloc(object)
     }
 
@@ -109,10 +113,11 @@ impl Allocator {
         name: &str,
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
+        frames: &Vec<CallFrame>,
         open_upvalues: &OpenUpvalues,
     ) -> Reference<String> {
         if DEBUG_GC {
-            self.mark_roots(stack, globals, open_upvalues);
+            self.mark_roots(stack, globals, frames, open_upvalues);
         }
         self.intern(name)
     }
@@ -145,10 +150,15 @@ impl Allocator {
         &mut self,
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
+        frames: &Vec<CallFrame>,
         _open_upvalues: &OpenUpvalues,
     ) {
         for &value in stack {
             self.mark_value(value);
+        }
+
+        for frame in frames.iter() {
+            self.mark_object(frame.closure.index)
         }
 
         self.mark_table(globals);

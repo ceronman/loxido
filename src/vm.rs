@@ -11,9 +11,9 @@ use crate::{
 };
 use std::{any::Any, collections::HashMap};
 
-struct CallFrame {
-    function: Reference<LoxFunction>,
-    closure: Reference<Closure>,
+pub struct CallFrame {
+    pub function: Reference<LoxFunction>, // TODO: Fix unnecessary reference here.
+    pub closure: Reference<Closure>,
     ip: usize,
     slot: usize,
 }
@@ -387,11 +387,11 @@ impl Vm {
 
     pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
         self.allocator
-            .alloc_gc(object, &self.stack, &self.globals, &self.open_upvalues)
+            .alloc_gc(object, &self.stack, &self.globals, &self.frames, &self.open_upvalues)
     }
 
     pub fn intern(&mut self, name: &str) -> Reference<String> {
         self.allocator
-            .intern_gc(name, &self.stack, &self.globals, &self.open_upvalues)
+            .intern_gc(name, &self.stack, &self.globals, &self.frames, &self.open_upvalues)
     }
 }
