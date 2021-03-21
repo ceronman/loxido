@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::{any::Any, collections::HashMap, fmt, hash};
 
-use crate::{chunk::Value, closure::OpenUpvalues, vm::CallFrame};
+use crate::{chunk::Value, closure::ObjUpvalue, vm::CallFrame};
 
 const DEBUG_GC: bool = true;
 
@@ -100,7 +100,7 @@ impl Allocator {
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
         frames: &Vec<CallFrame>,
-        open_upvalues: &OpenUpvalues,
+        open_upvalues: &Vec<Reference<ObjUpvalue>>,
     ) -> Reference<T> {
         if DEBUG_GC {
             self.mark_roots(stack, globals, frames, open_upvalues);
@@ -114,7 +114,7 @@ impl Allocator {
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
         frames: &Vec<CallFrame>,
-        open_upvalues: &OpenUpvalues,
+        open_upvalues: &Vec<Reference<ObjUpvalue>>,
     ) -> Reference<String> {
         if DEBUG_GC {
             self.mark_roots(stack, globals, frames, open_upvalues);
@@ -140,6 +140,10 @@ impl Allocator {
         self.objects[reference.index].obj.downcast_ref().unwrap()
     }
 
+    pub fn deref_mut<T: Any>(&mut self, reference: Reference<T>) -> &mut T {
+        self.objects[reference.index].obj.downcast_mut().unwrap()
+    }
+
     #[allow(dead_code)]
     fn free<T: Any>(&mut self, reference: Reference<T>) {
         self.objects[reference.index] = ObjHeader::empty();
@@ -151,7 +155,7 @@ impl Allocator {
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
         frames: &Vec<CallFrame>,
-        _open_upvalues: &OpenUpvalues,
+        open_upvalues: &Vec<Reference<ObjUpvalue>>,
     ) {
         for &value in stack {
             self.mark_value(value);
@@ -159,6 +163,10 @@ impl Allocator {
 
         for frame in frames.iter() {
             self.mark_object(frame.closure)
+        }
+
+        for &upvalue in open_upvalues {
+            self.mark_object(upvalue);
         }
 
         self.mark_table(globals);

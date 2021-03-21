@@ -4,10 +4,10 @@ use crate::{
     allocator::{Allocator, Reference},
     chunk::{Chunk, Instruction, Value},
     closure::Closure,
-    closure::OpenUpvalues,
+    closure::ObjUpvalue,
     compiler::Parser,
     error::LoxError,
-    function::{NativeFn},
+    function::NativeFn,
 };
 use std::{any::Any, collections::HashMap};
 
@@ -58,7 +58,7 @@ pub struct Vm {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
-    open_upvalues: OpenUpvalues,
+    open_upvalues: Vec<Reference<ObjUpvalue>>,
 }
 
 impl Vm {
@@ -68,7 +68,7 @@ impl Vm {
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
-            open_upvalues: OpenUpvalues::new(STACK_SIZE),
+            open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -183,19 +183,20 @@ impl Vm {
                 }
                 Instruction::CloseUpvalue => {
                     let stack_top = self.stack.len() - 1;
-                    self.open_upvalues.close_upvalues(&self.stack, stack_top);
+                    self.close_upvalues(stack_top);
                     self.pop();
                 }
                 Instruction::Closure(index) => {
                     let c = self.chunk_for(&frame).read_constant(index);
                     if let Value::Function(function_id) = c {
-                        let upvalues = self.allocator.deref(function_id).upvalues.iter();
+                        let upvalue_count = self.allocator.deref(function_id).upvalues.len();
                         let mut new_closure = Closure::new(function_id);
 
-                        for upvalue in upvalues {
+                        for i in 0..upvalue_count {
+                            let upvalue = self.allocator.deref(function_id).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
                                 // TODO: unify u8 vs usize everywhere
-                                self.open_upvalues.capture(upvalue.index as usize)
+                                self.capture_upvalue(upvalue.index as usize)
                             } else {
                                 let current_closure = self.allocator.deref(frame.closure);
                                 current_closure.upvalues[upvalue.index as usize].clone()
@@ -248,7 +249,8 @@ impl Vm {
                 Instruction::GetUpvalue(slot) => {
                     let value = {
                         let current_closure = self.allocator.deref(frame.closure);
-                        let upvalue = current_closure.upvalues[slot as usize].borrow();
+                        let upvalue_ref = current_closure.upvalues[slot as usize];
+                        let upvalue = self.allocator.deref(upvalue_ref);
                         if let Some(value) = upvalue.closed {
                             value
                         } else {
@@ -299,7 +301,7 @@ impl Vm {
                 }
                 Instruction::Return => {
                     let value = self.pop();
-                    self.open_upvalues.close_upvalues(&self.stack, frame.slot);
+                    self.close_upvalues(frame.slot);
                     match self.frames.pop() {
                         Some(f) => {
                             self.stack.truncate(frame.slot);
@@ -330,8 +332,9 @@ impl Vm {
                 Instruction::SetUpvalue(slot) => {
                     // TODO: current_closure dance is repeated a lot.
                     let current_closure = self.allocator.deref(frame.closure);
-                    let mut upvalue = current_closure.upvalues[slot as usize].borrow_mut();
+                    let upvalue_ref = current_closure.upvalues[slot as usize];
                     let value = self.peek(0);
+                    let mut upvalue = self.allocator.deref_mut(upvalue_ref);
                     if let None = upvalue.closed {
                         self.stack[upvalue.location] = value;
                     } else {
@@ -362,6 +365,35 @@ impl Vm {
         }
     }
 
+    fn capture_upvalue(&mut self, location: usize) -> Reference<ObjUpvalue> {
+        for &upvalue_ref in self.open_upvalues.iter() {
+            let upvalue = self.allocator.deref(upvalue_ref);
+            if upvalue.location == location {
+                return upvalue_ref;
+            }
+        }
+        let upvalue = ObjUpvalue::new(location);
+        let upvalue = self.allocator.alloc(upvalue);
+        self.open_upvalues.push(upvalue);
+        upvalue
+    }
+
+    fn close_upvalues(&mut self, last: usize) {
+        let mut i = 0;
+        while i != self.open_upvalues.len() {
+            let upvalue = self.open_upvalues[i];
+            let upvalue = self.allocator.deref_mut(upvalue);
+            if upvalue.location >= last {
+                // TODO: Might be optimization oportunities for this. Maybe deque.
+                self.open_upvalues.remove(i);
+                let location = upvalue.location;
+                upvalue.closed = Some(self.stack[location]);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     fn call(
         &mut self,
         frame: CallFrame,
@@ -386,12 +418,22 @@ impl Vm {
     }
 
     pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
-        self.allocator
-            .alloc_gc(object, &self.stack, &self.globals, &self.frames, &self.open_upvalues)
+        self.allocator.alloc_gc(
+            object,
+            &self.stack,
+            &self.globals,
+            &self.frames,
+            &self.open_upvalues,
+        )
     }
 
     pub fn intern(&mut self, name: &str) -> Reference<String> {
-        self.allocator
-            .intern_gc(name, &self.stack, &self.globals, &self.frames, &self.open_upvalues)
+        self.allocator.intern_gc(
+            name,
+            &self.stack,
+            &self.globals,
+            &self.frames,
+            &self.open_upvalues,
+        )
     }
 }
