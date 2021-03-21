@@ -3,6 +3,8 @@ use std::{any::Any, collections::HashMap, fmt, hash};
 
 use crate::{chunk::Value, closure::OpenUpvalues};
 
+const DEBUG_GC: bool = true;
+
 pub struct Reference<T> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
@@ -50,14 +52,14 @@ struct Empty;
 struct ObjHeader {
     #[allow(dead_code)]
     is_marked: bool,
-    obj: Box<dyn Any>
+    obj: Box<dyn Any>,
 }
 
 impl ObjHeader {
     fn empty() -> Self {
         ObjHeader {
             is_marked: false,
-            obj: Box::new(Empty {})
+            obj: Box::new(Empty {}),
         }
     }
 }
@@ -73,7 +75,7 @@ impl Allocator {
     pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
         let entry = ObjHeader {
             is_marked: false,
-            obj: Box::new(object)
+            obj: Box::new(object),
         };
         let index = match self.free_slots.pop() {
             Some(i) => {
@@ -105,10 +107,13 @@ impl Allocator {
     pub fn intern_gc(
         &mut self,
         name: &str,
-        _stack: &Vec<Value>,
-        _globals: &HashMap<Reference<String>, Value>,
-        _open_upvalues: &OpenUpvalues,
+        stack: &Vec<Value>,
+        globals: &HashMap<Reference<String>, Value>,
+        open_upvalues: &OpenUpvalues,
     ) -> Reference<String> {
+        if DEBUG_GC {
+            self.mark_roots(stack, globals, open_upvalues);
+        }
         self.intern(name)
     }
 
@@ -134,5 +139,38 @@ impl Allocator {
     fn free<T: Any>(&mut self, reference: Reference<T>) {
         self.objects[reference.index] = ObjHeader::empty();
         self.free_slots.push(reference.index)
+    }
+
+    fn mark_roots(
+        &mut self,
+        stack: &Vec<Value>,
+        globals: &HashMap<Reference<String>, Value>,
+        _open_upvalues: &OpenUpvalues,
+    ) {
+        for &value in stack {
+            self.mark_value(value);
+        }
+
+        self.mark_table(globals);
+    }
+
+    fn mark_value(&mut self, value: Value) {
+        match value {
+            Value::String(r) => self.mark_object(r.index),
+            Value::Closure(r) => self.mark_object(r.index),
+            Value::Function(r) => self.mark_object(r.index),
+            _ => (),
+        }
+    }
+
+    fn mark_object(&mut self, index: usize) {
+        self.objects[index].is_marked = true;
+    }
+
+    fn mark_table(&mut self, globals: &HashMap<Reference<String>, Value>) {
+        for (&k, &v) in globals {
+            self.mark_object(k.index);
+            self.mark_value(v);
+        }
     }
 }

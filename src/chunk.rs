@@ -13,7 +13,7 @@ pub enum Value {
     String(Reference<String>),
     Function(Reference<LoxFunction>),
     Closure(Reference<Closure>),
-    NativeFunction(NativeFn),
+    NativeFunction(NativeFn), // TODO: Make it garbage collected?
 }
 
 impl Value {
