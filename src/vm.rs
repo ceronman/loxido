@@ -7,21 +7,19 @@ use crate::{
     closure::OpenUpvalues,
     compiler::Parser,
     error::LoxError,
-    function::{LoxFunction, NativeFn},
+    function::{NativeFn},
 };
 use std::{any::Any, collections::HashMap};
 
 pub struct CallFrame {
-    pub function: Reference<LoxFunction>, // TODO: Fix unnecessary reference here.
     pub closure: Reference<Closure>,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(function: Reference<LoxFunction>, closure: Reference<Closure>) -> Self {
+    fn new(closure: Reference<Closure>) -> Self {
         CallFrame {
-            function,
             closure,
             ip: 0,
             slot: 0,
@@ -105,7 +103,9 @@ impl Vm {
     // TODO: Maybe return Err(RuntimeError) directly?
     fn runtime_error(&self, frame: &CallFrame, msg: &str) -> LoxError {
         eprintln!("{}", msg);
-        let chunk = &self.allocator.deref(frame.function).chunk;
+        let closure = self.allocator.deref(frame.closure);
+        let function = self.allocator.deref(closure.function);
+        let chunk = &function.chunk;
         let line = chunk.lines[frame.ip - 1];
         eprintln!("[line {}] in script", line);
         LoxError::RuntimeError
@@ -115,8 +115,8 @@ impl Vm {
         let parser = Parser::new(code, self);
         let function = parser.compile()?;
         let closure = Closure::new(function);
-        let closure_id = self.alloc(closure);
-        self.frames.push(CallFrame::new(function, closure_id));
+        let closure_ref = self.alloc(closure);
+        self.frames.push(CallFrame::new(closure_ref));
         self.run()
     }
 
@@ -379,7 +379,7 @@ impl Vm {
         } else {
             self.frames.push(frame);
             // TODO this looks cleaner with a constructor
-            let mut frame = CallFrame::new(closure.function, closure_id);
+            let mut frame = CallFrame::new(closure_id);
             frame.slot = self.stack.len() - (arg_count as usize) - 1;
             Ok(frame)
         }
