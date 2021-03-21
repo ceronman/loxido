@@ -158,7 +158,7 @@ impl Allocator {
         }
 
         for frame in frames.iter() {
-            self.mark_object(frame.closure.index)
+            self.mark_object(frame.closure)
         }
 
         self.mark_table(globals);
@@ -166,20 +166,20 @@ impl Allocator {
 
     fn mark_value(&mut self, value: Value) {
         match value {
-            Value::String(r) => self.mark_object(r.index),
-            Value::Closure(r) => self.mark_object(r.index),
-            Value::Function(r) => self.mark_object(r.index),
+            Value::String(r) => self.mark_object(r),
+            Value::Closure(r) => self.mark_object(r),
+            Value::Function(r) => self.mark_object(r),
             _ => (),
         }
     }
 
-    fn mark_object(&mut self, index: usize) {
-        self.objects[index].is_marked = true;
+    fn mark_object<T>(&mut self, obj: Reference<T>) {
+        self.objects[obj.index].is_marked = true;
     }
 
     fn mark_table(&mut self, globals: &HashMap<Reference<String>, Value>) {
         for (&k, &v) in globals {
-            self.mark_object(k.index);
+            self.mark_object(k);
             self.mark_value(v);
         }
     }
