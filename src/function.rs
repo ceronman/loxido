@@ -27,13 +27,13 @@ impl PartialEq for NativeFn {
 }
 
 // TODO: Only needed because of clone() done in Closure instruction
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Upvalue {
     pub index: u8,
     pub is_local: bool,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct LoxFunction {
     pub arity: usize,
     pub chunk: Chunk,

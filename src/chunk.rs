@@ -5,7 +5,7 @@ use crate::{
 };
 use std::fmt;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Nil,
     Bool(bool),
@@ -74,7 +74,7 @@ pub enum Instruction {
     True,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Chunk {
     pub code: Vec<Instruction>,
     constants: Vec<Value>,

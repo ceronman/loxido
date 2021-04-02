@@ -1,4 +1,5 @@
 use cpu_time::ProcessTime;
+use fmt::Debug;
 
 use crate::{
     allocator::{Allocator, Reference},
@@ -9,7 +10,7 @@ use crate::{
     error::LoxError,
     function::NativeFn,
 };
-use std::{any::Any, collections::HashMap};
+use std::{any::Any, collections::HashMap, fmt};
 
 pub struct CallFrame {
     pub closure: Reference<Closure>,
@@ -417,7 +418,7 @@ impl Vm {
         }
     }
 
-    pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: Any + Debug>(&mut self, object: T) -> Reference<T> {
         self.allocator.alloc_gc(
             object,
             &self.stack,

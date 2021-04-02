@@ -1,8 +1,7 @@
-#[cfg(feature = "debug_log_gc")]
-use std::any::type_name;
-
-use std::{marker::PhantomData};
+use std::{any::type_name, marker::PhantomData};
 use std::{any::Any, collections::HashMap, fmt, hash};
+
+use fmt::Debug;
 
 use crate::{chunk::Value, closure::ObjUpvalue, vm::CallFrame};
 
@@ -32,7 +31,13 @@ impl<T> Default for Reference<T> {
 
 impl<T> fmt::Display for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ref({})", self.index)
+        write!(f, "ref({}) {}", self.index, type_name::<T>())
+    }
+}
+
+impl<T: Any> Debug for Reference<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ref({}) {}", self.index, type_name::<T>())
     }
 }
 
@@ -73,9 +78,9 @@ pub struct Allocator {
 }
 
 impl Allocator {
-    pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: Any + Debug>(&mut self, object: T) -> Reference<T> {
         #[cfg(feature = "debug_log_gc")]
-        println!("Allocating object {}", type_name::<T>());
+        let repr = format!("{:?}", object);
         let entry = ObjHeader {
             is_marked: false,
             obj: Box::new(object),
@@ -90,6 +95,8 @@ impl Allocator {
                 self.objects.len() - 1
             }
         };
+        #[cfg(feature = "debug_log_gc")]
+        println!("alloc(id:{}, type:{}, val:{})", index, type_name::<T>(), repr);
         let reference = Reference {
             index,
             _marker: PhantomData,
@@ -97,7 +104,7 @@ impl Allocator {
         reference
     }
 
-    pub fn alloc_gc<T: Any>(
+    pub fn alloc_gc<T: Any + Debug>(
         &mut self,
         object: T,
         stack: &Vec<Value>,
@@ -146,11 +153,11 @@ impl Allocator {
     }
 
     #[allow(dead_code)]
-    fn free<T: Any>(&mut self, reference: Reference<T>) {
+    fn free<T: Any + Debug>(&mut self, obj: Reference<T>) {
         #[cfg(feature = "debug_log_gc")]
-        println!("Freeing object {}", type_name::<T>());
-        self.objects[reference.index] = ObjHeader::empty();
-        self.free_slots.push(reference.index)
+        println!("free (id:{}, type:{}, val:{:?})", obj.index, type_name::<T>(), obj);
+        self.objects[obj.index] = ObjHeader::empty();
+        self.free_slots.push(obj.index)
     }
 
     fn collect_garbage(&mut self,
@@ -199,9 +206,9 @@ impl Allocator {
         }
     }
 
-    fn mark_object<T>(&mut self, obj: Reference<T>) {
+    fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
         #[cfg(feature = "debug_log_gc")]
-        println!("Marking object {}", type_name::<T>());
+        println!("mark(id:{}, type:{}, val:{:?})", obj.index, type_name::<T>(), obj);
         self.objects[obj.index].is_marked = true;
     }
 

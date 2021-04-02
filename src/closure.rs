@@ -1,5 +1,6 @@
 use crate::{allocator::Reference, chunk::Value, function::LoxFunction};
 
+#[derive(Debug)]
 pub struct ObjUpvalue {
     pub location: usize, // TODO: Make this a proper type
     pub closed: Option<Value>,
@@ -14,6 +15,7 @@ impl ObjUpvalue {
     }
 }
 
+#[derive(Debug)]
 pub struct Closure {
     pub function: Reference<LoxFunction>,
     pub upvalues: Vec<Reference<ObjUpvalue>>,
