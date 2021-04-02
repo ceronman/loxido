@@ -1,9 +1,52 @@
-use std::{any::type_name, marker::PhantomData};
+use std::{any::type_name, collections::VecDeque, marker::PhantomData};
 use std::{any::Any, collections::HashMap, fmt, hash};
 
 use fmt::Debug;
 
-use crate::{chunk::Value, closure::ObjUpvalue, vm::CallFrame};
+use crate::{
+    chunk::Value,
+    closure::{Closure, ObjUpvalue},
+    function::LoxFunction,
+    vm::CallFrame,
+};
+
+pub trait Trace {
+    fn trace(&self, allocator: &mut Allocator);
+}
+
+impl Trace for String {
+    fn trace(&self, _allocator: &mut Allocator) {}
+}
+
+impl Trace for ObjUpvalue {
+    fn trace(&self, allocator: &mut Allocator) {
+        if let Some(obj) = self.closed {
+            allocator.mark_value(obj)
+        }
+    }
+}
+
+impl Trace for LoxFunction {
+    fn trace(&self, allocator: &mut Allocator) {
+        allocator.mark_object(self.name);
+        for &constant in &self.chunk.constants {
+            allocator.mark_value(constant);
+        }
+    }
+}
+
+impl Trace for Closure {
+    fn trace(&self, allocator: &mut Allocator) {
+        allocator.mark_object(self.function);
+        for &upvalue in &self.upvalues {
+            allocator.mark_object(upvalue);
+        }
+    }
+}
+
+impl Trace for Empty {
+    fn trace(&self, _allocator: &mut Allocator) {}
+}
 
 pub struct Reference<T> {
     index: usize,
@@ -61,7 +104,6 @@ impl hash::Hash for Reference<String> {
 struct Empty;
 
 struct ObjHeader {
-    #[allow(dead_code)]
     is_marked: bool,
     obj: Box<dyn Any>,
 }
@@ -80,6 +122,7 @@ pub struct Allocator {
     free_slots: Vec<usize>,
     objects: Vec<ObjHeader>,
     strings: HashMap<String, Reference<String>>,
+    grey_stack: VecDeque<usize>, // TODO: Add proper capacity
 }
 
 impl Allocator {
@@ -186,6 +229,7 @@ impl Allocator {
         println!("-- gc begin");
 
         self.mark_roots(stack, globals, frames, open_upvalues);
+        self.trace_references();
 
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc end");
@@ -213,6 +257,23 @@ impl Allocator {
         self.mark_table(globals);
     }
 
+    fn trace_references(&mut self) {
+        while let Some(index) = self.grey_stack.pop_back() {
+            self.blacken_object(index);
+        }
+    }
+
+    fn blacken_object(&mut self, index: usize) {
+        let obj = &self.objects[index];
+        #[cfg(feature = "debug_log_gc")]
+        println!(
+            "blacken(id:{}, type:{}, val:{:?})",
+            index,
+            type_name::<T>(),
+            obj
+        );
+    }
+
     fn mark_value(&mut self, value: Value) {
         match value {
             Value::String(r) => self.mark_object(r),
@@ -231,6 +292,7 @@ impl Allocator {
             obj
         );
         self.objects[obj.index].is_marked = true;
+        self.grey_stack.push_back(obj.index);
     }
 
     fn mark_table(&mut self, globals: &HashMap<Reference<String>, Value>) {

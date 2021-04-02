@@ -77,7 +77,7 @@ pub enum Instruction {
 #[derive(Debug, Default)]
 pub struct Chunk {
     pub code: Vec<Instruction>,
-    constants: Vec<Value>,
+    pub constants: Vec<Value>,
     pub lines: Vec<usize>,
 }
 
