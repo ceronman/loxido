@@ -33,9 +33,9 @@ impl fmt::Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Number(value) => write!(f, "{}", value),
-            Value::String(value) => write!(f, "<str {}>", value),
-            Value::Function(value) => write!(f, "<fn {}>", value),
-            Value::Closure(value) => write!(f, "<fn {}>", value),
+            Value::String(value) => write!(f, "{:?}", value),
+            Value::Function(value) => write!(f, "{:?}", value),
+            Value::Closure(value) => write!(f, "{:?}", value),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
         }
     }

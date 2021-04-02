@@ -29,16 +29,21 @@ impl<T> Default for Reference<T> {
     }
 }
 
-impl<T> fmt::Display for Reference<T> {
+impl<T: Any> fmt::Display for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ref({}) {}", self.index, type_name::<T>())
+        write!(f, "ref({}:{})", self.index, short_type_name::<T>())
     }
 }
 
 impl<T: Any> Debug for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ref({}) {}", self.index, type_name::<T>())
+        write!(f, "ref({}:{})", self.index, short_type_name::<T>())
     }
+}
+
+fn short_type_name<T: Any>() -> &'static str {
+    let full_name = type_name::<T>();
+    full_name.split("::").last().unwrap()
 }
 
 impl<T> PartialEq for Reference<T> {
