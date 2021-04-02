@@ -101,7 +101,12 @@ impl Allocator {
             }
         };
         #[cfg(feature = "debug_log_gc")]
-        println!("alloc(id:{}, type:{}, val:{})", index, type_name::<T>(), repr);
+        println!(
+            "alloc(id:{}, type:{}, val:{})",
+            index,
+            type_name::<T>(),
+            repr
+        );
         let reference = Reference {
             index,
             _marker: PhantomData,
@@ -160,17 +165,23 @@ impl Allocator {
     #[allow(dead_code)]
     fn free<T: Any + Debug>(&mut self, obj: Reference<T>) {
         #[cfg(feature = "debug_log_gc")]
-        println!("free (id:{}, type:{}, val:{:?})", obj.index, type_name::<T>(), obj);
+        println!(
+            "free (id:{}, type:{}, val:{:?})",
+            obj.index,
+            type_name::<T>(),
+            obj
+        );
         self.objects[obj.index] = ObjHeader::empty();
         self.free_slots.push(obj.index)
     }
 
-    fn collect_garbage(&mut self,
+    fn collect_garbage(
+        &mut self,
         stack: &Vec<Value>,
         globals: &HashMap<Reference<String>, Value>,
         frames: &Vec<CallFrame>,
-        open_upvalues: &Vec<Reference<ObjUpvalue>>) {
-        
+        open_upvalues: &Vec<Reference<ObjUpvalue>>,
+    ) {
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc begin");
 
@@ -213,7 +224,12 @@ impl Allocator {
 
     fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
         #[cfg(feature = "debug_log_gc")]
-        println!("mark(id:{}, type:{}, val:{:?})", obj.index, type_name::<T>(), obj);
+        println!(
+            "mark(id:{}, type:{}, val:{:?})",
+            obj.index,
+            type_name::<T>(),
+            obj
+        );
         self.objects[obj.index].is_marked = true;
     }
 
