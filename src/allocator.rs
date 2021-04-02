@@ -1,9 +1,10 @@
-use std::marker::PhantomData;
+#[cfg(feature = "debug_log_gc")]
+use std::any::type_name;
+
+use std::{marker::PhantomData};
 use std::{any::Any, collections::HashMap, fmt, hash};
 
 use crate::{chunk::Value, closure::ObjUpvalue, vm::CallFrame};
-
-const DEBUG_GC: bool = true;
 
 pub struct Reference<T> {
     index: usize,
@@ -73,6 +74,8 @@ pub struct Allocator {
 
 impl Allocator {
     pub fn alloc<T: Any>(&mut self, object: T) -> Reference<T> {
+        #[cfg(feature = "debug_log_gc")]
+        println!("Allocating object {}", type_name::<T>());
         let entry = ObjHeader {
             is_marked: false,
             obj: Box::new(object),
@@ -102,9 +105,8 @@ impl Allocator {
         frames: &Vec<CallFrame>,
         open_upvalues: &Vec<Reference<ObjUpvalue>>,
     ) -> Reference<T> {
-        if DEBUG_GC {
-            self.mark_roots(stack, globals, frames, open_upvalues);
-        }
+        #[cfg(feature = "debug_stress_gc")]
+        self.collect_garbage(stack, globals, frames, open_upvalues);
         self.alloc(object)
     }
 
@@ -116,9 +118,8 @@ impl Allocator {
         frames: &Vec<CallFrame>,
         open_upvalues: &Vec<Reference<ObjUpvalue>>,
     ) -> Reference<String> {
-        if DEBUG_GC {
-            self.mark_roots(stack, globals, frames, open_upvalues);
-        }
+        #[cfg(feature = "debug_stress_gc")]
+        self.collect_garbage(stack, globals, frames, open_upvalues);
         self.intern(name)
     }
 
@@ -146,8 +147,25 @@ impl Allocator {
 
     #[allow(dead_code)]
     fn free<T: Any>(&mut self, reference: Reference<T>) {
+        #[cfg(feature = "debug_log_gc")]
+        println!("Freeing object {}", type_name::<T>());
         self.objects[reference.index] = ObjHeader::empty();
         self.free_slots.push(reference.index)
+    }
+
+    fn collect_garbage(&mut self,
+        stack: &Vec<Value>,
+        globals: &HashMap<Reference<String>, Value>,
+        frames: &Vec<CallFrame>,
+        open_upvalues: &Vec<Reference<ObjUpvalue>>) {
+        
+        #[cfg(feature = "debug_log_gc")]
+        println!("-- gc begin");
+
+        self.mark_roots(stack, globals, frames, open_upvalues);
+
+        #[cfg(feature = "debug_log_gc")]
+        println!("-- gc end");
     }
 
     fn mark_roots(
@@ -182,6 +200,8 @@ impl Allocator {
     }
 
     fn mark_object<T>(&mut self, obj: Reference<T>) {
+        #[cfg(feature = "debug_log_gc")]
+        println!("Marking object {}", type_name::<T>());
         self.objects[obj.index].is_marked = true;
     }
 
