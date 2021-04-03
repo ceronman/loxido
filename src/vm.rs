@@ -1,16 +1,8 @@
 use cpu_time::ProcessTime;
 use fmt::Debug;
 
-use crate::{
-    allocator::{Allocator, Reference},
-    chunk::{Chunk, Instruction, Value},
-    closure::Closure,
-    closure::ObjUpvalue,
-    compiler::Parser,
-    error::LoxError,
-    function::NativeFn,
-};
-use std::{any::Any, collections::HashMap, fmt};
+use crate::{allocator::{Allocator, Reference, Trace}, chunk::{Chunk, Instruction, Value}, closure::Closure, closure::ObjUpvalue, compiler::Parser, error::LoxError, function::NativeFn};
+use std::{collections::HashMap, fmt};
 
 pub struct CallFrame {
     pub closure: Reference<Closure>,
@@ -418,7 +410,7 @@ impl Vm {
         }
     }
 
-    pub fn alloc<T: Any + Debug>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
         self.allocator.alloc_gc(
             object,
             &self.stack,

@@ -1,4 +1,4 @@
-use std::{any::type_name, collections::VecDeque, marker::PhantomData};
+use std::{any::type_name, collections::VecDeque, marker::PhantomData, mem};
 use std::{any::Any, collections::HashMap, fmt, hash};
 
 use fmt::Debug;
@@ -12,10 +12,18 @@ use crate::{
 
 pub trait Trace {
     fn trace(&self, allocator: &mut Allocator);
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl Trace for String {
     fn trace(&self, _allocator: &mut Allocator) {}
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl Trace for ObjUpvalue {
@@ -23,6 +31,12 @@ impl Trace for ObjUpvalue {
         if let Some(obj) = self.closed {
             allocator.mark_value(obj)
         }
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -33,6 +47,12 @@ impl Trace for LoxFunction {
             allocator.mark_value(constant);
         }
     }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl Trace for Closure {
@@ -42,10 +62,22 @@ impl Trace for Closure {
             allocator.mark_object(upvalue);
         }
     }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl Trace for Empty {
     fn trace(&self, _allocator: &mut Allocator) {}
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 pub struct Reference<T> {
@@ -105,7 +137,7 @@ struct Empty;
 
 struct ObjHeader {
     is_marked: bool,
-    obj: Box<dyn Any>,
+    obj: Box<dyn Trace>,
 }
 
 impl ObjHeader {
@@ -126,7 +158,7 @@ pub struct Allocator {
 }
 
 impl Allocator {
-    pub fn alloc<T: Any + Debug>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
         #[cfg(feature = "debug_log_gc")]
         let repr = format!("{:?}", object);
         let entry = ObjHeader {
@@ -157,7 +189,7 @@ impl Allocator {
         reference
     }
 
-    pub fn alloc_gc<T: Any + Debug>(
+    pub fn alloc_gc<T: Trace + 'static + Debug>(
         &mut self,
         object: T,
         stack: &Vec<Value>,
@@ -198,11 +230,11 @@ impl Allocator {
     }
 
     pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
-        self.objects[reference.index].obj.downcast_ref().unwrap()
+        self.objects[reference.index].obj.as_any().downcast_ref().unwrap()
     }
 
     pub fn deref_mut<T: Any>(&mut self, reference: Reference<T>) -> &mut T {
-        self.objects[reference.index].obj.downcast_mut().unwrap()
+        self.objects[reference.index].obj.as_any_mut().downcast_mut().unwrap()
     }
 
     #[allow(dead_code)]
@@ -264,14 +296,12 @@ impl Allocator {
     }
 
     fn blacken_object(&mut self, index: usize) {
-        let obj = &self.objects[index];
         #[cfg(feature = "debug_log_gc")]
-        println!(
-            "blacken(id:{}, type:{}, val:{:?})",
-            index,
-            type_name::<T>(),
-            obj
-        );
+        println!("blacken(id:{})",index);
+        
+        let header = mem::replace(&mut self.objects[index], ObjHeader::empty());
+        header.obj.trace(self);
+        self.objects[index] = header;
     }
 
     fn mark_value(&mut self, value: Value) {
