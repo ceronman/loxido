@@ -91,7 +91,7 @@ impl Vm {
     }
 
     fn define_native(&mut self, name: &str, native: NativeFn) {
-        let name_id = self.allocator.intern(name);
+        let name_id = self.allocator.intern(name.to_owned());
         self.globals.insert(name_id, Value::NativeFunction(native));
     }
 
@@ -170,7 +170,7 @@ impl Vm {
                             let s_a = self.allocator.deref(*value_a);
                             let s_b = self.allocator.deref(*value_b);
                             let result = format!("{}{}", s_a, s_b);
-                            let s = self.allocator.intern_owned(result);
+                            let s = self.intern(result);
                             let value = Value::String(s);
                             self.push(value);
                         }
@@ -374,7 +374,7 @@ impl Vm {
             }
         }
         let upvalue = ObjUpvalue::new(location);
-        let upvalue = self.allocator.alloc(upvalue);
+        let upvalue = self.alloc(upvalue);
         self.open_upvalues.push(upvalue);
         upvalue
     }
@@ -419,22 +419,45 @@ impl Vm {
     }
 
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
-        self.allocator.alloc_gc(
-            object,
-            &self.stack,
-            &self.globals,
-            &self.frames,
-            &self.open_upvalues,
-        )
+        self.mark_and_sweep();
+        self.allocator.alloc(object)
     }
 
-    pub fn intern(&mut self, name: &str) -> Reference<String> {
-        self.allocator.intern_gc(
-            name,
-            &self.stack,
-            &self.globals,
-            &self.frames,
-            &self.open_upvalues,
-        )
+    pub fn intern(&mut self, name: String) -> Reference<String> {
+        self.mark_and_sweep();
+        self.allocator.intern(name)
+    }
+
+    fn mark_and_sweep(&mut self) {
+        #[cfg(feature = "debug_stress_gc")]
+        {
+            #[cfg(feature = "debug_log_gc")]
+            println!("-- gc begin");
+
+            self.mark_roots();
+            self.allocator.collect_garbage();
+
+            #[cfg(feature = "debug_log_gc")]
+            println!("-- gc end");
+        }
+    }
+
+    fn mark_roots(&mut self) {
+        for &value in &self.stack {
+            self.allocator.mark_value(value);
+        }
+
+        for frame in &self.frames {
+            self.allocator.mark_object(frame.closure)
+        }
+
+        for &upvalue in &self.open_upvalues {
+            self.allocator.mark_object(upvalue);
+        }
+
+        for (&k, &v) in &self.globals {
+            self.allocator.mark_object(k);
+            self.allocator.mark_value(v);
+        }
     }
 }

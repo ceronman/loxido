@@ -386,7 +386,7 @@ impl<'a> Parser<'a> {
         let new_compiler = Compiler::new(None, kind);
         let old_compiler = mem::replace(&mut self.compiler, new_compiler);
         self.compiler.enclosing = Some(old_compiler);
-        let function_name = self.vm.intern(self.previous.lexeme);
+        let function_name = self.vm.intern(self.previous.lexeme.to_owned());
         self.compiler.function.name = function_name;
     }
 
@@ -612,7 +612,7 @@ impl<'a> Parser<'a> {
     fn string(&mut self, _can_assing: bool) {
         let lexeme = self.previous.lexeme;
         let value = &lexeme[1..(lexeme.len() - 1)];
-        let s = self.vm.intern(value);
+        let s = self.vm.intern(value.to_owned());
         self.emit_constant(Value::String(s));
     }
 
@@ -790,7 +790,7 @@ impl<'a> Parser<'a> {
     }
 
     fn identifier_constant(&mut self, token: Token) -> u8 {
-        let identifier = self.vm.intern(token.lexeme);
+        let identifier = self.vm.intern(token.lexeme.to_owned());
         let value = Value::String(identifier);
         self.make_constant(value)
     }

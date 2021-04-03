@@ -7,7 +7,6 @@ use crate::{
     chunk::Value,
     closure::{Closure, ObjUpvalue},
     function::LoxFunction,
-    vm::CallFrame,
 };
 
 pub trait Trace {
@@ -189,33 +188,7 @@ impl Allocator {
         reference
     }
 
-    pub fn alloc_gc<T: Trace + 'static + Debug>(
-        &mut self,
-        object: T,
-        stack: &Vec<Value>,
-        globals: &HashMap<Reference<String>, Value>,
-        frames: &Vec<CallFrame>,
-        open_upvalues: &Vec<Reference<ObjUpvalue>>,
-    ) -> Reference<T> {
-        #[cfg(feature = "debug_stress_gc")]
-        self.collect_garbage(stack, globals, frames, open_upvalues);
-        self.alloc(object)
-    }
-
-    pub fn intern_gc(
-        &mut self,
-        name: &str,
-        stack: &Vec<Value>,
-        globals: &HashMap<Reference<String>, Value>,
-        frames: &Vec<CallFrame>,
-        open_upvalues: &Vec<Reference<ObjUpvalue>>,
-    ) -> Reference<String> {
-        #[cfg(feature = "debug_stress_gc")]
-        self.collect_garbage(stack, globals, frames, open_upvalues);
-        self.intern(name)
-    }
-
-    pub fn intern_owned(&mut self, name: String) -> Reference<String> {
+    pub fn intern(&mut self, name: String) -> Reference<String> {
         if let Some(&value) = self.strings.get(&name) {
             value
         } else {
@@ -223,10 +196,6 @@ impl Allocator {
             self.strings.insert(name, reference);
             reference
         }
-    }
-
-    pub fn intern(&mut self, name: &str) -> Reference<String> {
-        self.intern_owned(name.to_owned())
     }
 
     pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
@@ -252,44 +221,9 @@ impl Allocator {
         self.free_slots.push(index)
     }
 
-    fn collect_garbage(
-        &mut self,
-        stack: &Vec<Value>,
-        globals: &HashMap<Reference<String>, Value>,
-        frames: &Vec<CallFrame>,
-        open_upvalues: &Vec<Reference<ObjUpvalue>>,
-    ) {
-        #[cfg(feature = "debug_log_gc")]
-        println!("-- gc begin");
-
-        self.mark_roots(stack, globals, frames, open_upvalues);
+    pub fn collect_garbage(&mut self) {
         self.trace_references();
         self.sweep();
-
-        #[cfg(feature = "debug_log_gc")]
-        println!("-- gc end");
-    }
-
-    fn mark_roots(
-        &mut self,
-        stack: &Vec<Value>,
-        globals: &HashMap<Reference<String>, Value>,
-        frames: &Vec<CallFrame>,
-        open_upvalues: &Vec<Reference<ObjUpvalue>>,
-    ) {
-        for &value in stack {
-            self.mark_value(value);
-        }
-
-        for frame in frames.iter() {
-            self.mark_object(frame.closure)
-        }
-
-        for &upvalue in open_upvalues {
-            self.mark_object(upvalue);
-        }
-
-        self.mark_table(globals);
     }
 
     fn trace_references(&mut self) {
@@ -308,7 +242,7 @@ impl Allocator {
         self.objects[index] = header;
     }
 
-    fn mark_value(&mut self, value: Value) {
+    pub fn mark_value(&mut self, value: Value) {
         match value {
             Value::String(r) => self.mark_object(r),
             Value::Closure(r) => self.mark_object(r),
@@ -317,7 +251,7 @@ impl Allocator {
         }
     }
 
-    fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
+    pub fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
         if self.objects[obj.index].is_marked {
             return;
         }
@@ -331,13 +265,6 @@ impl Allocator {
         );
         self.objects[obj.index].is_marked = true;
         self.grey_stack.push_back(obj.index);
-    }
-
-    fn mark_table(&mut self, globals: &HashMap<Reference<String>, Value>) {
-        for (&k, &v) in globals {
-            self.mark_object(k);
-            self.mark_value(v);
-        }
     }
 
     fn sweep(&mut self) {
