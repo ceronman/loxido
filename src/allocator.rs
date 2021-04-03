@@ -230,11 +230,19 @@ impl Allocator {
     }
 
     pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
-        self.objects[reference.index].obj.as_any().downcast_ref().unwrap()
+        self.objects[reference.index]
+            .obj
+            .as_any()
+            .downcast_ref()
+            .unwrap()
     }
 
     pub fn deref_mut<T: Any>(&mut self, reference: Reference<T>) -> &mut T {
-        self.objects[reference.index].obj.as_any_mut().downcast_mut().unwrap()
+        self.objects[reference.index]
+            .obj
+            .as_any_mut()
+            .downcast_mut()
+            .unwrap()
     }
 
     #[allow(dead_code)]
@@ -297,8 +305,9 @@ impl Allocator {
 
     fn blacken_object(&mut self, index: usize) {
         #[cfg(feature = "debug_log_gc")]
-        println!("blacken(id:{})",index);
-        
+        println!("blacken(id:{})", index);
+
+        // TODO: Think how to avoid this trick to please the borrow checker mig
         let header = mem::replace(&mut self.objects[index], ObjHeader::empty());
         header.obj.trace(self);
         self.objects[index] = header;

@@ -1,7 +1,15 @@
 use cpu_time::ProcessTime;
 use fmt::Debug;
 
-use crate::{allocator::{Allocator, Reference, Trace}, chunk::{Chunk, Instruction, Value}, closure::Closure, closure::ObjUpvalue, compiler::Parser, error::LoxError, function::NativeFn};
+use crate::{
+    allocator::{Allocator, Reference, Trace},
+    chunk::{Chunk, Instruction, Value},
+    closure::Closure,
+    closure::ObjUpvalue,
+    compiler::Parser,
+    error::LoxError,
+    function::NativeFn,
+};
 use std::{collections::HashMap, fmt};
 
 pub struct CallFrame {
