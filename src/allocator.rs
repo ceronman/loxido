@@ -245,17 +245,11 @@ impl Allocator {
             .unwrap()
     }
 
-    #[allow(dead_code)]
-    fn free<T: Any + Debug>(&mut self, obj: Reference<T>) {
+    fn free(&mut self, index: usize) {
         #[cfg(feature = "debug_log_gc")]
-        println!(
-            "free (id:{}, type:{}, val:{:?})",
-            obj.index,
-            type_name::<T>(),
-            obj
-        );
-        self.objects[obj.index] = ObjHeader::empty();
-        self.free_slots.push(obj.index)
+        println!("free (id:{})", index,);
+        self.objects[index] = ObjHeader::empty();
+        self.free_slots.push(index)
     }
 
     fn collect_garbage(
@@ -270,6 +264,7 @@ impl Allocator {
 
         self.mark_roots(stack, globals, frames, open_upvalues);
         self.trace_references();
+        self.sweep();
 
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc end");
@@ -323,6 +318,10 @@ impl Allocator {
     }
 
     fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
+        if self.objects[obj.index].is_marked {
+            return;
+        }
+
         #[cfg(feature = "debug_log_gc")]
         println!(
             "mark(id:{}, type:{}, val:{:?})",
@@ -338,6 +337,16 @@ impl Allocator {
         for (&k, &v) in globals {
             self.mark_object(k);
             self.mark_value(v);
+        }
+    }
+
+    fn sweep(&mut self) {
+        for i in 0..self.objects.len() {
+            if self.objects[i].is_marked {
+                self.objects[i].is_marked = false;
+            } else {
+                self.free(i)
+            }
         }
     }
 }
