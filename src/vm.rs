@@ -30,6 +30,7 @@ impl CallFrame {
 
 const MAX_FRAMES: usize = 64;
 const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
+const MAX_TEMP_ROOTS: usize = 64;
 
 lazy_static! {
     static ref BEGIN_OF_PROGRAM: ProcessTime = ProcessTime::now();
@@ -60,6 +61,7 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
+    temp_roots: Vec<Value>
 }
 
 impl Vm {
@@ -70,6 +72,7 @@ impl Vm {
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
+            temp_roots: Vec::with_capacity(MAX_TEMP_ROOTS)
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -113,11 +116,12 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, self);
+        let parser = Parser::new(code, &mut self.allocator);
         let function = parser.compile()?;
-        let closure = Closure::new(function);
-        let closure_ref = self.alloc(closure);
-        self.frames.push(CallFrame::new(closure_ref));
+        self.push_temp_root(Value::Function(function));
+        let closure = self.alloc(Closure::new(function));
+        self.frames.push(CallFrame::new(closure));
+        self.pop_temp_root();
         self.run()
     }
 
@@ -419,8 +423,16 @@ impl Vm {
     }
 
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
+        #[cfg(feature = "debug_log_gc")]
+        println!("- begin allocation(val:{:?})", object);
+
         self.mark_and_sweep();
-        self.allocator.alloc(object)
+        let reference = self.allocator.alloc(object);
+
+        #[cfg(feature = "debug_log_gc")]
+        println!("- end allocation");
+
+        reference
     }
 
     pub fn intern(&mut self, name: String) -> Reference<String> {
@@ -459,5 +471,17 @@ impl Vm {
             self.allocator.mark_object(k);
             self.allocator.mark_value(v);
         }
+
+        for &value in &self.temp_roots {
+            self.allocator.mark_value(value);
+        }
+    }
+
+    fn push_temp_root(&mut self, v: Value) {
+        self.temp_roots.push(v);
+    }
+
+    fn pop_temp_root(&mut self) {
+        self.temp_roots.pop();
     }
 }

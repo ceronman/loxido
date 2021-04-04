@@ -1,11 +1,10 @@
 use crate::{
-    allocator::Reference,
+    allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     error::LoxError,
     function::Upvalue,
     function::{FunctionType, LoxFunction},
     scanner::{Scanner, Token, TokenType},
-    vm::Vm,
 };
 use std::collections::HashMap;
 use std::{convert::TryFrom, mem};
@@ -163,7 +162,7 @@ impl<'a> Compiler<'a> {
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
-    vm: &'a mut Vm,
+    allocator: &'a mut Allocator,
     current: Token<'a>,
     previous: Token<'a>,
     had_error: bool,
@@ -172,7 +171,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, vm: &'a mut Vm) -> Parser<'a> {
+    pub fn new(code: &'a str, allocator: &'a mut Allocator) -> Parser<'a> {
         let t1 = Token {
             kind: TokenType::Eof,
             lexeme: "",
@@ -320,7 +319,7 @@ impl<'a> Parser<'a> {
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(None, FunctionType::Script),
-            vm,
+            allocator,
             current: t1,
             previous: t2,
             had_error: false,
@@ -347,7 +346,7 @@ impl<'a> Parser<'a> {
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
-            Ok(self.vm.alloc(self.compiler.function))
+            Ok(self.allocator.alloc(self.compiler.function))
         }
     }
 
@@ -386,7 +385,7 @@ impl<'a> Parser<'a> {
         let new_compiler = Compiler::new(None, kind);
         let old_compiler = mem::replace(&mut self.compiler, new_compiler);
         self.compiler.enclosing = Some(old_compiler);
-        let function_name = self.vm.intern(self.previous.lexeme.to_owned());
+        let function_name = self.allocator.intern(self.previous.lexeme.to_owned());
         self.compiler.function.name = function_name;
     }
 
@@ -424,7 +423,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
         let function = self.pop_compiler();
-        let fn_id = self.vm.alloc(function);
+        let fn_id = self.allocator.alloc(function);
 
         // TODO: these two lines are very similar to emit_constant
         let index = self.make_constant(Value::Function(fn_id));
@@ -612,7 +611,7 @@ impl<'a> Parser<'a> {
     fn string(&mut self, _can_assing: bool) {
         let lexeme = self.previous.lexeme;
         let value = &lexeme[1..(lexeme.len() - 1)];
-        let s = self.vm.intern(value.to_owned());
+        let s = self.allocator.intern(value.to_owned());
         self.emit_constant(Value::String(s));
     }
 
@@ -790,7 +789,7 @@ impl<'a> Parser<'a> {
     }
 
     fn identifier_constant(&mut self, token: Token) -> u8 {
-        let identifier = self.vm.intern(token.lexeme.to_owned());
+        let identifier = self.allocator.intern(token.lexeme.to_owned());
         let value = Value::String(identifier);
         self.make_constant(value)
     }

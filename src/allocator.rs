@@ -157,9 +157,7 @@ pub struct Allocator {
 }
 
 impl Allocator {
-    pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
-        #[cfg(feature = "debug_log_gc")]
-        let repr = format!("{:?}", object);
+    pub fn alloc<T: Trace + 'static>(&mut self, object: T) -> Reference<T> {
         let entry = ObjHeader {
             is_marked: false,
             obj: Box::new(object),
@@ -176,10 +174,9 @@ impl Allocator {
         };
         #[cfg(feature = "debug_log_gc")]
         println!(
-            "alloc(id:{}, type:{}, val:{})",
+            "alloc(id:{}, type:{})",
             index,
             type_name::<T>(),
-            repr
         );
         let reference = Reference {
             index,
