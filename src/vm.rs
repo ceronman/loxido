@@ -61,7 +61,7 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
-    temp_roots: Vec<Value>
+    temp_roots: Vec<Value>,
 }
 
 impl Vm {
@@ -72,7 +72,7 @@ impl Vm {
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
-            temp_roots: Vec::with_capacity(MAX_TEMP_ROOTS)
+            temp_roots: Vec::with_capacity(MAX_TEMP_ROOTS),
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -98,14 +98,9 @@ impl Vm {
         self.globals.insert(name_id, Value::NativeFunction(native));
     }
 
-    fn chunk_for(&self, frame: &CallFrame) -> &Chunk {
-        let closure = self.allocator.deref(frame.closure);
-        let function = self.allocator.deref(closure.function);
-        &function.chunk
-    }
-
     // TODO: Maybe return Err(RuntimeError) directly?
-    fn runtime_error(&self, frame: &CallFrame, msg: &str) -> LoxError {
+    fn runtime_error(&self, msg: &str) -> LoxError {
+        let frame = self.current_frame();
         eprintln!("{}", msg);
         let closure = self.allocator.deref(frame.closure);
         let function = self.allocator.deref(closure.function);
@@ -126,27 +121,34 @@ impl Vm {
     }
 
     // TODO: Investigate macros for this
-    fn binary_op<T>(
-        &mut self,
-        frame: &CallFrame,
-        f: fn(f64, f64) -> T,
-        r: fn(T) -> Value,
-    ) -> Result<(), LoxError> {
+    fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, r: fn(T) -> Value) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
             (Value::Number(value_b), Value::Number(value_a)) => {
                 self.push(r(f(value_a, value_b)));
                 Ok(())
             }
-            _ => Err(self.runtime_error(&frame, "Operands must be numbers.")),
+            _ => Err(self.runtime_error("Operands must be numbers.")),
         }
     }
 
-    fn run(&mut self) -> Result<(), LoxError> {
-        let mut frame = self.frames.pop().unwrap();
+    fn current_frame(&self) -> &CallFrame {
+        self.frames.last().unwrap()
+    }
 
+    fn current_frame_mut(&mut self) -> &mut CallFrame {
+        self.frames.last_mut().unwrap()
+    }
+
+    fn current_chunk(&self) -> &Chunk {
+        let closure = self.allocator.deref(self.current_frame().closure);
+        let function = self.allocator.deref(closure.function);
+        &function.chunk
+    }
+
+    fn run(&mut self) -> Result<(), LoxError> {
         loop {
-            let instruction = self.chunk_for(&frame).code[frame.ip];
+            let instruction = self.current_chunk().code[self.current_frame().ip];
 
             #[cfg(debug_assertions)]
             {
@@ -156,11 +158,11 @@ impl Vm {
                 println!("");
 
                 #[cfg(debug_assertions)]
-                self.chunk_for(&frame)
-                    .disassemble_instruction(&instruction, frame.ip);
+                self.current_chunk()
+                    .disassemble_instruction(&instruction, self.current_frame().ip);
             }
 
-            frame.ip += 1;
+            self.current_frame_mut().ip += 1;
 
             match instruction {
                 Instruction::Add => {
@@ -182,7 +184,7 @@ impl Vm {
                         _ => {
                             self.push(a);
                             self.push(b);
-                            return Err(self.runtime_error(&frame, "Operands must be numbers."));
+                            return Err(self.runtime_error("Operands must be numbers."));
                         }
                     }
                 }
@@ -192,7 +194,7 @@ impl Vm {
                     self.pop();
                 }
                 Instruction::Closure(index) => {
-                    let c = self.chunk_for(&frame).read_constant(index);
+                    let c = self.current_chunk().read_constant(index);
                     if let Value::Function(function_id) = c {
                         let upvalue_count = self.allocator.deref(function_id).upvalues.len();
                         let mut new_closure = Closure::new(function_id);
@@ -203,7 +205,8 @@ impl Vm {
                                 // TODO: unify u8 vs usize everywhere
                                 self.capture_upvalue(upvalue.index as usize)
                             } else {
-                                let current_closure = self.allocator.deref(frame.closure);
+                                let current_closure =
+                                    self.allocator.deref(self.current_frame().closure);
                                 current_closure.upvalues[upvalue.index as usize].clone()
                             };
                             new_closure.upvalues.push(obj_upvalue)
@@ -215,20 +218,18 @@ impl Vm {
                 }
                 Instruction::Call(arg_count) => {
                     // TODO: Unify duplicated functionality also in return
-                    frame = self.call_value(frame, arg_count)?;
+                    self.call_value(arg_count)?;
                 }
                 Instruction::Constant(index) => {
-                    let value = self.chunk_for(&frame).read_constant(index);
+                    let value = self.current_chunk().read_constant(index);
                     self.push(value);
                 }
                 Instruction::DefineGlobal(index) => {
-                    let s = self.chunk_for(&frame).read_string(index);
+                    let s = self.current_chunk().read_string(index);
                     let value = self.pop();
                     self.globals.insert(s, value);
                 }
-                Instruction::Divide => {
-                    self.binary_op(&frame, |a, b| a / b, |n| Value::Number(n))?
-                }
+                Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
                 Instruction::Equal => {
                     let a = self.pop();
                     let b = self.pop();
@@ -236,24 +237,24 @@ impl Vm {
                 }
                 Instruction::False => self.push(Value::Bool(false)),
                 Instruction::GetGlobal(index) => {
-                    let s = self.chunk_for(&frame).read_string(index);
+                    let s = self.current_chunk().read_string(index);
                     match self.globals.get(&s) {
                         Some(&value) => self.push(value),
                         None => {
                             let name = self.allocator.deref(s);
                             let msg = format!("Undefined variable '{}'.", name);
-                            return Err(self.runtime_error(&frame, &msg));
+                            return Err(self.runtime_error(&msg));
                         }
                     }
                 }
                 Instruction::GetLocal(slot) => {
-                    let i = slot as usize + frame.slot;
+                    let i = slot as usize + self.current_frame().slot;
                     let value = self.stack[i];
                     self.push(value);
                 }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
-                        let current_closure = self.allocator.deref(frame.closure);
+                        let current_closure = self.allocator.deref(self.current_frame().closure);
                         let upvalue_ref = current_closure.upvalues[slot as usize];
                         let upvalue = self.allocator.deref(upvalue_ref);
                         if let Some(value) = upvalue.closed {
@@ -264,28 +265,26 @@ impl Vm {
                     };
                     self.push(value);
                 }
-                Instruction::Greater => self.binary_op(&frame, |a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
                 Instruction::Jump(offset) => {
-                    frame.ip += offset as usize;
+                    self.current_frame_mut().ip += offset as usize;
                 }
                 Instruction::JumpIfFalse(offset) => {
                     if self.peek(0).is_falsy() {
-                        frame.ip += offset as usize;
+                        self.current_frame_mut().ip += offset as usize;
                     }
                 }
-                Instruction::Less => self.binary_op(&frame, |a, b| a < b, |n| Value::Bool(n))?,
+                Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
                 Instruction::Loop(offset) => {
-                    frame.ip -= offset as usize + 1;
+                    self.current_frame_mut().ip -= offset as usize + 1;
                 }
-                Instruction::Multiply => {
-                    self.binary_op(&frame, |a, b| a * b, |n| Value::Number(n))?
-                }
+                Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
                     if let Value::Number(value) = self.peek(0) {
                         self.pop();
                         self.push(Value::Number(-value));
                     } else {
-                        return Err(self.runtime_error(&frame, "Operand must be a number."));
+                        return Err(self.runtime_error("Operand must be a number."));
                     }
                 }
                 Instruction::Nil => self.push(Value::Nil),
@@ -305,38 +304,37 @@ impl Vm {
                     }
                 }
                 Instruction::Return => {
+                    let frame = self.frames.pop().unwrap();
                     let value = self.pop();
                     self.close_upvalues(frame.slot);
-                    match self.frames.pop() {
-                        Some(f) => {
-                            self.stack.truncate(frame.slot);
-                            self.push(value);
-                            frame = f;
-                        }
-                        None => {
-                            return Ok(());
-                        }
+                    self.frames.pop();
+
+                    if self.frames.is_empty() {
+                        return Ok(());
+                    } else {
+                        self.stack.truncate(frame.slot);
+                        self.push(value);
                     }
                 }
                 Instruction::SetGlobal(index) => {
                     // TODO: refactor long indirection?
-                    let name = self.chunk_for(&frame).read_string(index);
+                    let name = self.current_chunk().read_string(index);
                     let value = self.peek(0);
                     if let None = self.globals.insert(name, value) {
                         self.globals.remove(&name);
                         let s = self.allocator.deref(name);
                         let msg = format!("Undefined variable '{}'.", s);
-                        return Err(self.runtime_error(&frame, &msg));
+                        return Err(self.runtime_error(&msg));
                     }
                 }
                 Instruction::SetLocal(slot) => {
-                    let i = slot as usize + frame.slot;
+                    let i = slot as usize + self.current_frame().slot;
                     let value = self.peek(0);
                     self.stack[i] = value;
                 }
                 Instruction::SetUpvalue(slot) => {
                     // TODO: current_closure dance is repeated a lot.
-                    let current_closure = self.allocator.deref(frame.closure);
+                    let current_closure = self.allocator.deref(self.current_frame().closure);
                     let upvalue_ref = current_closure.upvalues[slot as usize];
                     let value = self.peek(0);
                     let mut upvalue = self.allocator.deref_mut(upvalue_ref);
@@ -346,27 +344,25 @@ impl Vm {
                         upvalue.closed = Some(value);
                     }
                 }
-                Instruction::Substract => {
-                    self.binary_op(&frame, |a, b| a - b, |n| Value::Number(n))?
-                }
+                Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
                 Instruction::True => self.push(Value::Bool(true)),
             };
         }
     }
 
-    fn call_value(&mut self, frame: CallFrame, arg_count: u8) -> Result<CallFrame, LoxError> {
+    fn call_value(&mut self, arg_count: u8) -> Result<(), LoxError> {
         let callee = self.peek(arg_count as usize);
         match callee {
-            Value::Closure(cid) => self.call(frame, cid, arg_count),
+            Value::Closure(cid) => self.call(cid, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count as usize;
                 let result = native.0(&self.allocator, &self.stack[left..]);
                 self.stack
                     .truncate(self.stack.len() - arg_count as usize - 1);
                 self.push(result);
-                Ok(frame)
+                Ok(())
             }
-            _ => Err(self.runtime_error(&frame, "Can only call functions and classes.")),
+            _ => Err(self.runtime_error("Can only call functions and classes.")),
         }
     }
 
@@ -399,26 +395,21 @@ impl Vm {
         }
     }
 
-    fn call(
-        &mut self,
-        frame: CallFrame,
-        closure_id: Reference<Closure>,
-        arg_count: u8,
-    ) -> Result<CallFrame, LoxError> {
+    fn call(&mut self, closure_id: Reference<Closure>, arg_count: u8) -> Result<(), LoxError> {
         let closure = self.allocator.deref(closure_id);
         // TODO: Inefficient double lookup;
         let f = self.allocator.deref(closure.function);
         if (arg_count as usize) != f.arity {
             let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
-            Err(self.runtime_error(&frame, &msg))
+            Err(self.runtime_error(&msg))
         } else if self.frames.len() == MAX_FRAMES {
-            Err(self.runtime_error(&frame, "Stack overflow."))
+            Err(self.runtime_error("Stack overflow."))
         } else {
-            self.frames.push(frame);
             // TODO this looks cleaner with a constructor
             let mut frame = CallFrame::new(closure_id);
             frame.slot = self.stack.len() - (arg_count as usize) - 1;
-            Ok(frame)
+            self.frames.push(frame);
+            Ok(())
         }
     }
 

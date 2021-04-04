@@ -173,11 +173,7 @@ impl Allocator {
             }
         };
         #[cfg(feature = "debug_log_gc")]
-        println!(
-            "alloc(id:{}, type:{})",
-            index,
-            type_name::<T>(),
-        );
+        println!("alloc(id:{}, type:{})", index, type_name::<T>(),);
         let reference = Reference {
             index,
             _marker: PhantomData,
