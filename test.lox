@@ -123,6 +123,13 @@ fun test_functions() {
     bagel();
 }
 
+fun test_gc_interner() {
+    var s = "unique" + "string";
+    s = "other" + "thing";
+    s = "unique" + "string";
+    print s;
+}
+
 
 
 test_arithmetic();
@@ -131,3 +138,4 @@ test_strings();
 test_if();
 test_loops();
 test_functions();
+test_gc_interner();
