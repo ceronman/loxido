@@ -338,7 +338,7 @@ impl<'a> Parser<'a> {
         self.emit(Instruction::Nil);
         self.emit(Instruction::Return);
 
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
             self.compiler.function.chunk.disassemble("code");
         }

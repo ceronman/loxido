@@ -67,7 +67,7 @@ pub struct Vm {
 impl Vm {
     pub fn new() -> Self {
         let mut vm = Self {
-            allocator: Allocator::default(),
+            allocator: Allocator::new(),
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
@@ -150,14 +150,13 @@ impl Vm {
         loop {
             let instruction = self.current_chunk().code[self.current_frame().ip];
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug_trace_execution")]
             {
                 for value in self.stack.iter() {
                     print!("[{}]", value);
                 }
                 println!("");
 
-                #[cfg(debug_assertions)]
                 self.current_chunk()
                     .disassemble_instruction(&instruction, self.current_frame().ip);
             }
@@ -203,11 +202,11 @@ impl Vm {
                             let upvalue = self.allocator.deref(function_id).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
                                 // TODO: unify u8 vs usize everywhere
-                                self.capture_upvalue(upvalue.index as usize)
+                                self.capture_upvalue(self.current_frame().slot + upvalue.index as usize)
                             } else {
                                 let current_closure =
                                     self.allocator.deref(self.current_frame().closure);
-                                current_closure.upvalues[upvalue.index as usize].clone()
+                                current_closure.upvalues[upvalue.index as usize]
                             };
                             new_closure.upvalues.push(obj_upvalue)
                         }
@@ -307,7 +306,6 @@ impl Vm {
                     let frame = self.frames.pop().unwrap();
                     let value = self.pop();
                     self.close_upvalues(frame.slot);
-                    self.frames.pop();
 
                     if self.frames.is_empty() {
                         return Ok(());
@@ -378,7 +376,6 @@ impl Vm {
         self.open_upvalues.push(upvalue);
         upvalue
     }
-
     fn close_upvalues(&mut self, last: usize) {
         let mut i = 0;
         while i != self.open_upvalues.len() {
@@ -414,15 +411,8 @@ impl Vm {
     }
 
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
-        #[cfg(feature = "debug_log_gc")]
-        println!("- begin allocation(val:{:?})", object);
-
         self.mark_and_sweep();
         let reference = self.allocator.alloc(object);
-
-        #[cfg(feature = "debug_log_gc")]
-        println!("- end allocation");
-
         reference
     }
 
@@ -432,8 +422,7 @@ impl Vm {
     }
 
     fn mark_and_sweep(&mut self) {
-        #[cfg(feature = "debug_stress_gc")]
-        {
+        if self.allocator.should_gc() {
             #[cfg(feature = "debug_log_gc")]
             println!("-- gc begin");
 

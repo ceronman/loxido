@@ -17,6 +17,8 @@ fun assert_false(a) {
 }
 
 fun test_arithmetic() {
+    print "Testing arithmetic...";
+
     assert_eq(2 * 3, 6);
     assert_eq(2 + 3, 5);
     assert_eq(30 - 20, 10);
@@ -31,6 +33,8 @@ fun test_arithmetic() {
 }
 
 fun test_boolean() {
+    print "Testing boolean...";
+
     assert_true(true);
     assert_true(!false);
     assert_true(true and true);
@@ -45,11 +49,15 @@ fun test_boolean() {
 }
 
 fun test_strings() {
+    print "Testing strings...";
+
     var a = "hello" + " world";
     assert_eq("hello world", a);
 }
 
 fun test_if() {
+    print "Testing if...";
+
     var a = 0;
     if (5 < 10) {
         a = 1;
@@ -69,6 +77,8 @@ fun test_if() {
 }
 
 fun test_loops() {
+    print "Testing loops...";
+
     var a = 5;
     while (a > 0) {
         a = a - 1;
@@ -83,6 +93,7 @@ fun test_loops() {
 }
 
 fun test_functions() {
+    print "Testing functions...";
     fun a() {
         return 1;
     }
@@ -94,12 +105,15 @@ fun test_functions() {
     }
 
     assert_eq(15, b(10, 5));
+}
 
+fun test_closures() {
+    print "Testing closures...";
     var result = nil;
     fun makeClosure() {
         var local = "local";
         fun closure() {
-            print local;
+            print "  Local is " + local;
             result = "result";
         }
         return closure;
@@ -109,10 +123,13 @@ fun test_functions() {
     closure();
 
     assert_eq("result", result);
+}
 
+fun test_closures2() {
+    print "Testing closures 2...";
     fun makeClosure2(value) {
         fun closure() {
-            print value;
+            print " " + value;
         }
         return closure;
     }
@@ -124,10 +141,22 @@ fun test_functions() {
 }
 
 fun test_gc_interner() {
+    print "Testing gc interner...";
+
     var s = "unique" + "string";
     s = "other" + "thing";
     s = "unique" + "string";
     print s;
+}
+
+fun test_gc_trigger() {
+    print "Testing gc trigger...";
+
+    var s = "hello";
+    for (var i = 1; i < 20000; i = i + 1) {
+        s = s + "world";
+    }
+    print "end";
 }
 
 
@@ -138,4 +167,9 @@ test_strings();
 test_if();
 test_loops();
 test_functions();
+test_closures();
+test_closures2();
 test_gc_interner();
+test_gc_trigger();
+
+print "++++++++++++++END OF THE TEST+++++++++++++++++++++";

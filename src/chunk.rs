@@ -105,7 +105,7 @@ impl Chunk {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug_trace_execution")]
     pub fn disassemble(&self, name: &str) {
         println!("== {} ==", name);
         for (offset, instruction) in self.code.iter().enumerate() {
@@ -113,7 +113,7 @@ impl Chunk {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug_trace_execution")]
     pub fn disassemble_instruction(&self, instruction: &Instruction, offset: usize) {
         print!("{:04} ", offset);
         let line = self.lines[offset];
@@ -155,7 +155,7 @@ impl Chunk {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug_trace_execution")]
     fn disassemble_constant(&self, name: &str, index: u8) {
         let i = index as usize;
         let value = self.constants[i].clone();

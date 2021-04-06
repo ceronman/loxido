@@ -136,6 +136,7 @@ struct Empty;
 
 struct ObjHeader {
     is_marked: bool,
+    size: usize,
     obj: Box<dyn Trace>,
 }
 
@@ -143,27 +144,42 @@ impl ObjHeader {
     fn empty() -> Self {
         ObjHeader {
             is_marked: false,
+            size: 0,
             obj: Box::new(Empty {}),
         }
     }
 }
 
-#[derive(Default)]
 pub struct Allocator {
+    bytes_allocated: usize,
+    next_gc: usize,
     free_slots: Vec<usize>,
     objects: Vec<ObjHeader>,
     strings: HashMap<String, Reference<String>>,
-    grey_stack: VecDeque<usize>, // TODO: Add proper capacity
+    grey_stack: VecDeque<usize>,
 }
 
 impl Allocator {
+    const GC_HEAP_GROW_FACTOR: usize = 2;
+
+    pub fn new() -> Self {
+        Allocator {
+            bytes_allocated: 0,
+            next_gc: 1024 * 64,
+            free_slots: Vec::new(),
+            objects: Vec::new(),
+            strings: HashMap::new(),
+            grey_stack: VecDeque::new(), // TODO: Add proper capacities
+        }
+    }
+
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
-        #[cfg(feature = "debug_log_gc")]
-        let repr = format!("{:?}", object);
         let entry = ObjHeader {
             is_marked: false,
+            size: mem::size_of::<T>(),
             obj: Box::new(object),
         };
+        self.bytes_allocated += entry.size;
         let index = match self.free_slots.pop() {
             Some(i) => {
                 self.objects[i] = entry;
@@ -176,10 +192,11 @@ impl Allocator {
         };
         #[cfg(feature = "debug_log_gc")]
         println!(
-            "alloc(id:{}, type:{}: val: {})",
+            "alloc(id:{}, type:{}: b:{}, t:{})",
             index,
             type_name::<T>(),
-            repr
+            self.bytes_allocated,
+            self.next_gc,
         );
         let reference = Reference {
             index,
@@ -217,14 +234,26 @@ impl Allocator {
     fn free(&mut self, index: usize) {
         #[cfg(feature = "debug_log_gc")]
         println!("free (id:{})", index,);
-        self.objects[index] = ObjHeader::empty();
+        let old = mem::replace(&mut self.objects[index], ObjHeader::empty());
+        self.bytes_allocated -= old.size;
         self.free_slots.push(index)
     }
 
     pub fn collect_garbage(&mut self) {
+        #[cfg(feature = "debug_log_gc")]
+        let before = self.bytes_allocated;
+
         self.trace_references();
         self.remove_white_strings();
         self.sweep();
+        self.next_gc = self.bytes_allocated * Allocator::GC_HEAP_GROW_FACTOR;
+
+        #[cfg(feature = "debug_log_gc")]
+        println!("collected {} bytes (from {} to {}) next at {}\n",
+            before - self.bytes_allocated,
+            before,
+            self.bytes_allocated,
+            self.next_gc);
     }
 
     fn trace_references(&mut self) {
@@ -266,6 +295,16 @@ impl Allocator {
         );
         self.objects[obj.index].is_marked = true;
         self.grey_stack.push_back(obj.index);
+    }
+
+    #[cfg(feature = "debug_stress_gc")]
+    pub fn should_gc(&self) -> bool {
+        true
+    }
+        
+    #[cfg(not(feature = "debug_stress_gc"))]
+    pub fn should_gc(&self) -> bool {
+        self.bytes_allocated > self.next_gc
     }
 
     fn sweep(&mut self) {
