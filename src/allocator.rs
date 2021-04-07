@@ -174,6 +174,12 @@ impl Allocator {
     }
 
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
+        #[cfg(feature = "debug_log_gc")]
+        let repr = format!("{:?}", object)
+            .chars()
+            .into_iter()
+            .take(32)
+            .collect::<String>();
         let entry = ObjHeader {
             is_marked: false,
             size: mem::size_of::<T>(),
@@ -192,9 +198,10 @@ impl Allocator {
         };
         #[cfg(feature = "debug_log_gc")]
         println!(
-            "alloc(id:{}, type:{}: b:{}, t:{})",
+            "alloc(id:{}, type:{}: repr: {}, b:{}, t:{})",
             index,
             type_name::<T>(),
+            repr,
             self.bytes_allocated,
             self.next_gc,
         );
@@ -249,11 +256,13 @@ impl Allocator {
         self.next_gc = self.bytes_allocated * Allocator::GC_HEAP_GROW_FACTOR;
 
         #[cfg(feature = "debug_log_gc")]
-        println!("collected {} bytes (from {} to {}) next at {}\n",
+        println!(
+            "collected {} bytes (from {} to {}) next at {}\n",
             before - self.bytes_allocated,
             before,
             self.bytes_allocated,
-            self.next_gc);
+            self.next_gc
+        );
     }
 
     fn trace_references(&mut self) {
@@ -301,7 +310,7 @@ impl Allocator {
     pub fn should_gc(&self) -> bool {
         true
     }
-        
+
     #[cfg(not(feature = "debug_stress_gc"))]
     pub fn should_gc(&self) -> bool {
         self.bytes_allocated > self.next_gc

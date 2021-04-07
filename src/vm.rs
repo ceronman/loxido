@@ -28,9 +28,9 @@ impl CallFrame {
     }
 }
 
+// TODO: Maybe move constants to struct impl
 const MAX_FRAMES: usize = 64;
 const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
-const MAX_TEMP_ROOTS: usize = 64;
 
 lazy_static! {
     static ref BEGIN_OF_PROGRAM: ProcessTime = ProcessTime::now();
@@ -61,7 +61,6 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<Reference<String>, Value>,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
-    temp_roots: Vec<Value>,
 }
 
 impl Vm {
@@ -72,7 +71,6 @@ impl Vm {
             stack: Vec::with_capacity(STACK_SIZE),
             globals: HashMap::new(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
-            temp_roots: Vec::with_capacity(MAX_TEMP_ROOTS),
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -113,10 +111,10 @@ impl Vm {
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
         let parser = Parser::new(code, &mut self.allocator);
         let function = parser.compile()?;
-        self.push_temp_root(Value::Function(function));
+        self.push(Value::Function(function));
         let closure = self.alloc(Closure::new(function));
         self.frames.push(CallFrame::new(closure));
-        self.pop_temp_root();
+        self.pop();
         self.run()
     }
 
@@ -202,7 +200,9 @@ impl Vm {
                             let upvalue = self.allocator.deref(function_id).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
                                 // TODO: unify u8 vs usize everywhere
-                                self.capture_upvalue(self.current_frame().slot + upvalue.index as usize)
+                                self.capture_upvalue(
+                                    self.current_frame().slot + upvalue.index as usize,
+                                )
                             } else {
                                 let current_closure =
                                     self.allocator.deref(self.current_frame().closure);
@@ -412,8 +412,7 @@ impl Vm {
 
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
         self.mark_and_sweep();
-        let reference = self.allocator.alloc(object);
-        reference
+        self.allocator.alloc(object)
     }
 
     pub fn intern(&mut self, name: String) -> Reference<String> {
@@ -451,17 +450,5 @@ impl Vm {
             self.allocator.mark_object(k);
             self.allocator.mark_value(v);
         }
-
-        for &value in &self.temp_roots {
-            self.allocator.mark_value(value);
-        }
-    }
-
-    fn push_temp_root(&mut self, v: Value) {
-        self.temp_roots.push(v);
-    }
-
-    fn pop_temp_root(&mut self) {
-        self.temp_roots.pop();
     }
 }

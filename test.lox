@@ -140,15 +140,6 @@ fun test_closures2() {
     bagel();
 }
 
-fun test_gc_interner() {
-    print "Testing gc interner...";
-
-    var s = "unique" + "string";
-    s = "other" + "thing";
-    s = "unique" + "string";
-    print s;
-}
-
 fun test_gc_trigger() {
     print "Testing gc trigger...";
 
@@ -169,7 +160,6 @@ test_loops();
 test_functions();
 test_closures();
 test_closures2();
-test_gc_interner();
 test_gc_trigger();
 
 print "++++++++++++++END OF THE TEST+++++++++++++++++++++";
