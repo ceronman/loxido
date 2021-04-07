@@ -4,18 +4,22 @@ use std::{any::Any, collections::HashMap, fmt, hash};
 use fmt::Debug;
 
 use crate::{
-    chunk::Value,
+    chunk::{Instruction, Value},
     closure::{Closure, ObjUpvalue},
-    function::LoxFunction,
+    function::{LoxFunction, Upvalue},
 };
 
 pub trait Trace {
+    fn size(&self) -> usize;
     fn trace(&self, allocator: &mut Allocator);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl Trace for String {
+    fn size(&self) -> usize {
+        mem::size_of::<String>() + self.as_bytes().len()
+    }
     fn trace(&self, _allocator: &mut Allocator) {}
     fn as_any(&self) -> &dyn Any {
         self
@@ -26,6 +30,9 @@ impl Trace for String {
 }
 
 impl Trace for ObjUpvalue {
+    fn size(&self) -> usize {
+        mem::size_of::<ObjUpvalue>()
+    }
     fn trace(&self, allocator: &mut Allocator) {
         if let Some(obj) = self.closed {
             allocator.mark_value(obj)
@@ -40,6 +47,13 @@ impl Trace for ObjUpvalue {
 }
 
 impl Trace for LoxFunction {
+    fn size(&self) -> usize {
+        mem::size_of::<LoxFunction>()
+            + self.upvalues.capacity() * mem::size_of::<Upvalue>()
+            + self.chunk.code.capacity() * mem::size_of::<Instruction>()
+            + self.chunk.constants.capacity() * mem::size_of::<Value>()
+            + self.chunk.constants.capacity() * mem::size_of::<usize>()
+    }
     fn trace(&self, allocator: &mut Allocator) {
         allocator.mark_object(self.name);
         for &constant in &self.chunk.constants {
@@ -55,6 +69,10 @@ impl Trace for LoxFunction {
 }
 
 impl Trace for Closure {
+    fn size(&self) -> usize {
+        mem::size_of::<Closure>()
+            + self.upvalues.capacity() * mem::size_of::<Reference<ObjUpvalue>>()
+    }
     fn trace(&self, allocator: &mut Allocator) {
         allocator.mark_object(self.function);
         for &upvalue in &self.upvalues {
@@ -70,6 +88,9 @@ impl Trace for Closure {
 }
 
 impl Trace for Empty {
+    fn size(&self) -> usize {
+        0
+    }
     fn trace(&self, _allocator: &mut Allocator) {}
     fn as_any(&self) -> &dyn Any {
         self
@@ -165,7 +186,7 @@ impl Allocator {
     pub fn new() -> Self {
         Allocator {
             bytes_allocated: 0,
-            next_gc: 1024 * 64,
+            next_gc: 1024 * 1024,
             free_slots: Vec::new(),
             objects: Vec::new(),
             strings: HashMap::new(),
@@ -180,12 +201,13 @@ impl Allocator {
             .into_iter()
             .take(32)
             .collect::<String>();
+        let size = object.size() + mem::size_of::<ObjHeader>();
+        self.bytes_allocated += size;
         let entry = ObjHeader {
             is_marked: false,
-            size: mem::size_of::<T>(),
+            size: size,
             obj: Box::new(object),
         };
-        self.bytes_allocated += entry.size;
         let index = match self.free_slots.pop() {
             Some(i) => {
                 self.objects[i] = entry;
@@ -228,6 +250,7 @@ impl Allocator {
             .as_any()
             .downcast_ref()
             .unwrap()
+        // .expect(&format!("Reference {} not found", reference.index))
     }
 
     pub fn deref_mut<T: Any>(&mut self, reference: Reference<T>) -> &mut T {
@@ -236,6 +259,7 @@ impl Allocator {
             .as_any_mut()
             .downcast_mut()
             .unwrap()
+        // .expect(&format!("Reference {} not found", reference.index))
     }
 
     fn free(&mut self, index: usize) {
@@ -318,6 +342,9 @@ impl Allocator {
 
     fn sweep(&mut self) {
         for i in 0..self.objects.len() {
+            if let Some(_) = self.objects[i].obj.as_any().downcast_ref::<Empty>() {
+                continue;
+            }
             if self.objects[i].is_marked {
                 self.objects[i].is_marked = false;
             } else {
