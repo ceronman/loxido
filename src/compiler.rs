@@ -200,7 +200,7 @@ impl<'a> Parser<'a> {
         rule(TokenType::LeftBrace, None, None, Precedence::None);
         rule(TokenType::RightBrace, None, None, Precedence::None);
         rule(TokenType::Comma, None, None, Precedence::None);
-        rule(TokenType::Dot, None, None, Precedence::None);
+        rule(TokenType::Dot, None, Some(Parser::dot), Precedence::Call);
         rule(
             TokenType::Minus,
             Some(Parser::unary),
@@ -689,6 +689,17 @@ impl<'a> Parser<'a> {
     fn call(&mut self, _can_assing: bool) {
         let arg_count = self.argument_list();
         self.emit(Instruction::Call(arg_count));
+    }
+
+    fn dot(&mut self, can_assign: bool) {
+        self.consume(TokenType::Identifier, "Expect property name after '.'.");
+        let name = self.identifier_constant(self.previous);
+        if can_assign && self.matches(TokenType::Equal) {
+            self.expression();
+            self.emit(Instruction::SetProperty(name));
+        } else {
+            self.emit(Instruction::GetProperty(name));
+        }
     }
 
     fn argument_list(&mut self) -> u8 {

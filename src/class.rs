@@ -44,6 +44,14 @@ impl Instance {
             fields: HashMap::new(),
         }
     }
+
+    pub fn get_property(&self, name: Reference<String>) -> Option<Value> {
+        self.fields.get(&name).map(|&v| v)
+    }
+
+    pub fn set_property(&mut self, name: Reference<String>, value: Value) {
+        self.fields.insert(name, value);
+    }
 }
 
 impl Trace for Instance {

@@ -150,7 +150,21 @@ fun test_gc_trigger() {
     print "end";
 }
 
+fun test_class_fields() {
+    print "Testing class fields...";
 
+    class Foo {}
+
+    var foo = Foo();
+    foo.name = "Manuel";
+    foo.id = 123;
+
+    assert_eq("Manuel", foo.name);
+    assert_eq(123, foo.id);
+
+    foo.id = 456;
+    assert_eq(456, foo.id);
+}
 
 test_arithmetic();
 test_boolean();
@@ -161,5 +175,6 @@ test_functions();
 test_closures();
 test_closures2();
 test_gc_trigger();
+test_class_fields();
 
 print "++++++++++++++END OF THE TEST+++++++++++++++++++++";

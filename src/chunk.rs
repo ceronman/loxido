@@ -62,6 +62,7 @@ pub enum Instruction {
     False,
     GetGlobal(u8),
     GetLocal(u8),
+    GetProperty(u8),
     GetUpvalue(u8),
     Greater,
     Jump(u16),
@@ -77,6 +78,7 @@ pub enum Instruction {
     Return,
     SetGlobal(u8),
     SetLocal(u8),
+    SetProperty(u8),
     SetUpvalue(u8),
     Substract,
     True,
@@ -143,6 +145,7 @@ impl Chunk {
             Instruction::False => println!("OP_FALSE"),
             Instruction::GetGlobal(i) => self.disassemble_constant("OP_GET_GLOBAL", *i),
             Instruction::GetLocal(i) => println!("OP_GET_LOCAL {}", i),
+            Instruction::GetProperty(i) => println!("OP_GET_PROPERTY {}", i),
             Instruction::GetUpvalue(i) => println!("OP_GET_UPVALUE {}", i),
             Instruction::Greater => println!("OP_GREATER"),
             Instruction::Jump(offset) => println!("OP_JUMP {}", offset), // TODO:
@@ -158,6 +161,7 @@ impl Chunk {
             Instruction::Return => println!("OP_RETURN"),
             Instruction::SetGlobal(i) => self.disassemble_constant("OP_SET_GLOBAL", *i),
             Instruction::SetLocal(i) => println!("OP_SET_LOCAL {}", i), // TODO: implement
+            Instruction::SetProperty(i) => println!("OP_SET_PROPERTY {}", i),
             Instruction::SetUpvalue(i) => println!("OP_SET_UPVALUE {}", i),
             Instruction::Substract => println!("OP_SUBSTRACT"),
             Instruction::True => println!("OP_TRUE"),

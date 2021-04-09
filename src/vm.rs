@@ -220,7 +220,7 @@ impl Vm {
 
                         let closure_id = self.alloc(new_closure);
                         self.push(Value::Closure(closure_id));
-                    }
+                    } // TODO error if not function.
                 }
                 Instruction::Call(arg_count) => {
                     // TODO: Unify duplicated functionality also in return
@@ -257,6 +257,27 @@ impl Vm {
                     let i = slot as usize + self.current_frame().slot;
                     let value = self.stack[i];
                     self.push(value);
+                }
+                Instruction::GetProperty(slot) => {
+                    if let Value::Instance(instance) = self.peek(0) {
+                        let instance = self.allocator.deref(instance);
+                        let name = self.current_chunk().read_string(slot);
+                        let value = instance.get_property(name);
+                        match value {
+                            Some(value) => {
+                                self.pop();
+                                self.push(value);
+                            }
+                            None => {
+                                let name = self.allocator.deref(name);
+                                return Err(
+                                    self.runtime_error(&format!("Undefined property '{}'.", name))
+                                );
+                            }
+                        }
+                    } else {
+                        return Err(self.runtime_error("Only instances have properties."));
+                    }
                 }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
@@ -336,6 +357,18 @@ impl Vm {
                     let i = slot as usize + self.current_frame().slot;
                     let value = self.peek(0);
                     self.stack[i] = value;
+                }
+                Instruction::SetProperty(slot) => {
+                    if let Value::Instance(instance) = self.peek(1) {
+                        let name = self.current_chunk().read_string(slot);
+                        let value = self.pop();
+                        let instance = self.allocator.deref_mut(instance);
+                        instance.set_property(name, value);
+                        self.pop();
+                        self.push(value);
+                    } else {
+                        return Err(self.runtime_error("Only instances have fields."));
+                    }
                 }
                 Instruction::SetUpvalue(slot) => {
                     // TODO: current_closure dance is repeated a lot.
