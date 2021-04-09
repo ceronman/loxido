@@ -4,6 +4,7 @@ use fmt::Debug;
 use crate::{
     allocator::{Allocator, Reference, Trace},
     chunk::{Chunk, Instruction, Value},
+    class::LoxClass,
     closure::Closure,
     closure::ObjUpvalue,
     compiler::Parser,
@@ -184,6 +185,12 @@ impl Vm {
                             return Err(self.runtime_error("Operands must be numbers."));
                         }
                     }
+                }
+                Instruction::Class(index) => {
+                    let s = self.current_chunk().read_string(index);
+                    let cls = LoxClass::new(s);
+                    let cls = self.allocator.alloc(cls);
+                    self.push(Value::Class(cls));
                 }
                 Instruction::CloseUpvalue => {
                     let stack_top = self.stack.len() - 1;

@@ -361,7 +361,9 @@ impl<'a> Parser<'a> {
     }
 
     fn declaration(&mut self) {
-        if self.matches(TokenType::Fun) {
+        if self.matches(TokenType::Class) {
+            self.class_declaration();
+        } else if self.matches(TokenType::Fun) {
             self.fun_declaration();
         } else if self.matches(TokenType::Var) {
             self.var_declaration();
@@ -372,6 +374,16 @@ impl<'a> Parser<'a> {
         if self.panic_mode {
             self.synchronize();
         }
+    }
+
+    fn class_declaration(&mut self) {
+        self.consume(TokenType::Identifier, "Expect class name.");
+        let name_constant = self.identifier_constant(self.previous);
+        self.declare_variable();
+        self.emit(Instruction::Class(name_constant));
+        self.define_variable(name_constant);
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.");
     }
 
     fn fun_declaration(&mut self) {

@@ -1,5 +1,6 @@
 use crate::{
     allocator::Reference,
+    class::LoxClass,
     closure::Closure,
     function::{LoxFunction, NativeFn},
 };
@@ -7,12 +8,14 @@ use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
+    // TODO: Sort
     Nil,
     Bool(bool),
     Number(f64),
     String(Reference<String>),
     Function(Reference<LoxFunction>),
     Closure(Reference<Closure>),
+    Class(Reference<LoxClass>),
     NativeFunction(NativeFn), // TODO: Make it garbage collected?
 }
 
@@ -30,12 +33,14 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            // TODO: Sort
             Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Number(value) => write!(f, "{}", value),
             Value::String(value) => write!(f, "{:?}", value),
             Value::Function(value) => write!(f, "{:?}", value),
             Value::Closure(value) => write!(f, "{:?}", value),
+            Value::Class(value) => write!(f, "{:?}", value),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
         }
     }
@@ -45,6 +50,7 @@ impl fmt::Display for Value {
 pub enum Instruction {
     Add,
     Call(u8),
+    Class(u8),
     CloseUpvalue,
     Closure(u8),
     Constant(u8),
@@ -124,6 +130,7 @@ impl Chunk {
         }
         match instruction {
             Instruction::Add => println!("OP_ADD"),
+            Instruction::Class(i) => println("OP_CLASS {}", i),
             Instruction::CloseUpvalue => println!("OP_CLOSE_UPVALUE"), // TODO: implement
             Instruction::Closure(i) => println!("OP_CLOSURE {}", i),   // TODO: implement
             Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
