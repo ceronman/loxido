@@ -4,7 +4,7 @@ use fmt::Debug;
 use crate::{
     allocator::{Allocator, Reference, Trace},
     chunk::{Chunk, Instruction, Value},
-    class::LoxClass,
+    class::{Instance, LoxClass},
     closure::Closure,
     closure::ObjUpvalue,
     compiler::Parser,
@@ -60,7 +60,7 @@ pub struct Vm {
     allocator: Allocator,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
-    globals: HashMap<Reference<String>, Value>,
+    globals: HashMap<Reference<String>, Value>, // TODO: Extract globals as Table?? Reused in class
     open_upvalues: Vec<Reference<ObjUpvalue>>,
 }
 
@@ -189,7 +189,7 @@ impl Vm {
                 Instruction::Class(index) => {
                     let s = self.current_chunk().read_string(index);
                     let cls = LoxClass::new(s);
-                    let cls = self.allocator.alloc(cls);
+                    let cls = self.alloc(cls);
                     self.push(Value::Class(cls));
                 }
                 Instruction::CloseUpvalue => {
@@ -355,9 +355,18 @@ impl Vm {
         }
     }
 
+    // TODO change to u8 to usize?
     fn call_value(&mut self, arg_count: u8) -> Result<(), LoxError> {
         let callee = self.peek(arg_count as usize);
         match callee {
+            Value::Class(class) => {
+                let instance = Instance::new(class);
+                let instance = self.alloc(instance);
+                self.stack
+                    .truncate(self.stack.len() - arg_count as usize - 1);
+                self.push(Value::Instance(instance));
+                Ok(())
+            }
             Value::Closure(cid) => self.call(cid, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count as usize;

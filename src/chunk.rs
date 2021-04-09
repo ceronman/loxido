@@ -1,6 +1,6 @@
 use crate::{
     allocator::Reference,
-    class::LoxClass,
+    class::{Instance, LoxClass},
     closure::Closure,
     function::{LoxFunction, NativeFn},
 };
@@ -16,6 +16,7 @@ pub enum Value {
     Function(Reference<LoxFunction>),
     Closure(Reference<Closure>),
     Class(Reference<LoxClass>),
+    Instance(Reference<Instance>),
     NativeFunction(NativeFn), // TODO: Make it garbage collected?
 }
 
@@ -41,6 +42,7 @@ impl fmt::Display for Value {
             Value::Function(value) => write!(f, "{:?}", value),
             Value::Closure(value) => write!(f, "{:?}", value),
             Value::Class(value) => write!(f, "{:?}", value),
+            Value::Instance(value) => write!(f, "{:?}", value),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
         }
     }
@@ -130,7 +132,7 @@ impl Chunk {
         }
         match instruction {
             Instruction::Add => println!("OP_ADD"),
-            Instruction::Class(i) => println("OP_CLASS {}", i),
+            Instruction::Class(i) => println!("OP_CLASS {}", i),
             Instruction::CloseUpvalue => println!("OP_CLOSE_UPVALUE"), // TODO: implement
             Instruction::Closure(i) => println!("OP_CLOSURE {}", i),   // TODO: implement
             Instruction::Constant(i) => self.disassemble_constant("OP_CONSTANT", *i),
