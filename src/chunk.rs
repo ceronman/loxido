@@ -4,7 +4,7 @@ use crate::{
     closure::Closure,
     function::{LoxFunction, NativeFn},
 };
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -175,3 +175,5 @@ impl Chunk {
         println!("{:<16} {:4} {}", name, index, value);
     }
 }
+
+pub type Table = HashMap<Reference<String>, Value>;

@@ -3,7 +3,7 @@ use fmt::Debug;
 
 use crate::{
     allocator::{Allocator, Reference, Trace},
-    chunk::{Chunk, Instruction, Value},
+    chunk::{Chunk, Instruction, Table, Value},
     class::{Instance, LoxClass},
     closure::Closure,
     closure::ObjUpvalue,
@@ -11,7 +11,7 @@ use crate::{
     error::LoxError,
     function::NativeFn,
 };
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 pub struct CallFrame {
     pub closure: Reference<Closure>,
@@ -60,7 +60,7 @@ pub struct Vm {
     allocator: Allocator,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
-    globals: HashMap<Reference<String>, Value>, // TODO: Extract globals as Table?? Reused in class
+    globals: Table,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
 }
 
@@ -70,7 +70,7 @@ impl Vm {
             allocator: Allocator::new(),
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
-            globals: HashMap::new(),
+            globals: Table::new(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
         };
         vm.define_native("clock", NativeFn(clock));
@@ -495,9 +495,6 @@ impl Vm {
             self.allocator.mark_object(upvalue);
         }
 
-        for (&k, &v) in &self.globals {
-            self.allocator.mark_object(k);
-            self.allocator.mark_value(v);
-        }
+        self.allocator.mark_table(&self.globals);
     }
 }

@@ -4,7 +4,7 @@ use std::{any::Any, collections::HashMap, fmt, hash};
 use fmt::Debug;
 
 use crate::{
-    chunk::{Instruction, Value},
+    chunk::{Instruction, Table, Value},
     closure::{Closure, ObjUpvalue},
     function::{LoxFunction, Upvalue},
 };
@@ -328,6 +328,13 @@ impl Allocator {
         );
         self.objects[obj.index].is_marked = true;
         self.grey_stack.push_back(obj.index);
+    }
+
+    pub fn mark_table(&mut self, table: &Table) {
+        for (&k, &v) in table {
+            self.mark_object(k);
+            self.mark_value(v);
+        }
     }
 
     #[cfg(feature = "debug_stress_gc")]

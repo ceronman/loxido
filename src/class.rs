@@ -1,18 +1,22 @@
-use std::{any::Any, collections::HashMap, mem};
+use std::{any::Any, mem};
 
 use crate::{
     allocator::{Allocator, Reference, Trace},
-    chunk::Value,
+    chunk::{Table, Value},
 };
 
 #[derive(Debug)]
 pub struct LoxClass {
     name: Reference<String>,
+    methods: Table,
 }
 
 impl LoxClass {
     pub fn new(name: Reference<String>) -> Self {
-        LoxClass { name }
+        LoxClass {
+            name,
+            methods: Table::new(),
+        }
     }
 }
 
@@ -22,6 +26,7 @@ impl Trace for LoxClass {
     }
     fn trace(&self, allocator: &mut Allocator) {
         allocator.mark_object(self.name);
+        allocator.mark_table(&self.methods);
     }
     fn as_any(&self) -> &dyn Any {
         self
@@ -34,14 +39,14 @@ impl Trace for LoxClass {
 #[derive(Debug)]
 pub struct Instance {
     class: Reference<LoxClass>,
-    fields: HashMap<Reference<String>, Value>,
+    fields: Table,
 }
 
 impl Instance {
     pub fn new(class: Reference<LoxClass>) -> Self {
         Instance {
             class,
-            fields: HashMap::new(),
+            fields: Table::new(),
         }
     }
 
@@ -62,11 +67,7 @@ impl Trace for Instance {
     }
     fn trace(&self, allocator: &mut Allocator) {
         allocator.mark_object(self.class);
-        // TODO: Duplicated code with mark roots
-        for (&k, &v) in &self.fields {
-            allocator.mark_object(k);
-            allocator.mark_value(v)
-        }
+        allocator.mark_table(&self.fields);
     }
     fn as_any(&self) -> &dyn Any {
         self
