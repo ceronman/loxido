@@ -3,12 +3,13 @@ use std::{any::Any, mem};
 use crate::{
     allocator::{Allocator, Reference, Trace},
     chunk::{Table, Value},
+    closure::Closure,
 };
 
 #[derive(Debug)]
 pub struct LoxClass {
-    name: Reference<String>,
-    methods: Table,
+    pub name: Reference<String>,
+    pub methods: Table,
 }
 
 impl LoxClass {
@@ -38,7 +39,7 @@ impl Trace for LoxClass {
 
 #[derive(Debug)]
 pub struct Instance {
-    class: Reference<LoxClass>,
+    pub class: Reference<LoxClass>,
     fields: Table,
 }
 
@@ -68,6 +69,34 @@ impl Trace for Instance {
     fn trace(&self, allocator: &mut Allocator) {
         allocator.mark_object(self.class);
         allocator.mark_table(&self.fields);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct BoundMethod {
+    receiver: Value,
+    pub method: Reference<Closure>,
+}
+
+impl BoundMethod {
+    pub fn new(receiver: Value, method: Reference<Closure>) -> Self {
+        BoundMethod { receiver, method }
+    }
+}
+
+impl Trace for BoundMethod {
+    fn size(&self) -> usize {
+        mem::size_of::<BoundMethod>()
+    }
+    fn trace(&self, allocator: &mut Allocator) {
+        allocator.mark_value(self.receiver);
+        allocator.mark_object(self.method);
     }
     fn as_any(&self) -> &dyn Any {
         self

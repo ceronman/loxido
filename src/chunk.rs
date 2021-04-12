@@ -1,6 +1,6 @@
 use crate::{
     allocator::Reference,
-    class::{Instance, LoxClass},
+    class::{BoundMethod, Instance, LoxClass},
     closure::Closure,
     function::{LoxFunction, NativeFn},
 };
@@ -8,16 +8,16 @@ use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
-    // TODO: Sort
-    Nil,
     Bool(bool),
-    Number(f64),
-    String(Reference<String>),
-    Function(Reference<LoxFunction>),
-    Closure(Reference<Closure>),
+    BoundMethod(Reference<BoundMethod>),
     Class(Reference<LoxClass>),
+    Closure(Reference<Closure>),
+    Function(Reference<LoxFunction>),
     Instance(Reference<Instance>),
     NativeFunction(NativeFn), // TODO: Make it garbage collected?
+    Nil,
+    Number(f64),
+    String(Reference<String>),
 }
 
 impl Value {
@@ -34,16 +34,16 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            // TODO: Sort
-            Value::Nil => write!(f, "nil"),
             Value::Bool(value) => write!(f, "{}", value),
-            Value::Number(value) => write!(f, "{}", value),
-            Value::String(value) => write!(f, "{:?}", value),
-            Value::Function(value) => write!(f, "{:?}", value),
-            Value::Closure(value) => write!(f, "{:?}", value),
+            Value::BoundMethod(value) => write!(f, "{:?}", value),
             Value::Class(value) => write!(f, "{:?}", value),
+            Value::Closure(value) => write!(f, "{:?}", value),
+            Value::Function(value) => write!(f, "{:?}", value),
             Value::Instance(value) => write!(f, "{:?}", value),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
+            Value::Nil => write!(f, "nil"),
+            Value::Number(value) => write!(f, "{}", value),
+            Value::String(value) => write!(f, "{:?}", value),
         }
     }
 }
@@ -69,6 +69,7 @@ pub enum Instruction {
     JumpIfFalse(u16),
     Less,
     Loop(u16),
+    Method(u8),
     Multiply,
     Negate,
     Nil,
@@ -152,6 +153,7 @@ impl Chunk {
             Instruction::JumpIfFalse(offset) => println!("OP_JUMP_IF_FALSE {}", offset), // TODO:
             Instruction::Less => println!("OP_LESS"),
             Instruction::Loop(offset) => println!("OP_LOOP {}", offset), // TODO:
+            Instruction::Method(i) => println!("OP_METHOD {}", i),
             Instruction::Multiply => println!("OP_MULTIPLY"),
             Instruction::Negate => println!("OP_NEGATE"),
             Instruction::Not => println!("OP_NOT"),

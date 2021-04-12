@@ -166,6 +166,17 @@ fun test_class_fields() {
     assert_eq(456, foo.id);
 }
 
+fun test_class_method() {
+    class Scone {
+        topping(first, second) {
+            print "  scone with " + first + " and " + second;
+        }
+    }
+
+    var scone = Scone();
+    scone.topping("berries", "cream");
+}
+
 test_arithmetic();
 test_boolean();
 test_strings();
@@ -174,7 +185,9 @@ test_loops();
 test_functions();
 test_closures();
 test_closures2();
-test_gc_trigger();
 test_class_fields();
+test_class_method();
+test_gc_trigger();
+
 
 print "++++++++++++++END OF THE TEST+++++++++++++++++++++";

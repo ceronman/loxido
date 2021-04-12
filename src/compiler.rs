@@ -378,12 +378,18 @@ impl<'a> Parser<'a> {
 
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
-        let name_constant = self.identifier_constant(self.previous);
+        let class_name = self.previous;
+        let name_constant = self.identifier_constant(class_name);
         self.declare_variable();
         self.emit(Instruction::Class(name_constant));
         self.define_variable(name_constant);
+        self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.method();
+        }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
+        self.emit(Instruction::Pop);
     }
 
     fn fun_declaration(&mut self) {
@@ -430,7 +436,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        //...
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
@@ -440,6 +445,14 @@ impl<'a> Parser<'a> {
         // TODO: these two lines are very similar to emit_constant
         let index = self.make_constant(Value::Function(fn_id));
         self.emit(Instruction::Closure(index));
+    }
+
+    fn method(&mut self) {
+        self.consume(TokenType::Identifier, "Expect method name.");
+        let constant = self.identifier_constant(self.previous);
+        let function_type = FunctionType::Function;
+        self.function(function_type);
+        self.emit(Instruction::Method(constant));
     }
 
     fn var_declaration(&mut self) {

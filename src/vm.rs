@@ -4,7 +4,7 @@ use fmt::Debug;
 use crate::{
     allocator::{Allocator, Reference, Trace},
     chunk::{Chunk, Instruction, Table, Value},
-    class::{Instance, LoxClass},
+    class::{BoundMethod, Instance, LoxClass},
     closure::Closure,
     closure::ObjUpvalue,
     compiler::Parser,
@@ -261,6 +261,7 @@ impl Vm {
                 Instruction::GetProperty(slot) => {
                     if let Value::Instance(instance) = self.peek(0) {
                         let instance = self.allocator.deref(instance);
+                        let class = instance.class;
                         let name = self.current_chunk().read_string(slot);
                         let value = instance.get_property(name);
                         match value {
@@ -269,10 +270,7 @@ impl Vm {
                                 self.push(value);
                             }
                             None => {
-                                let name = self.allocator.deref(name);
-                                return Err(
-                                    self.runtime_error(&format!("Undefined property '{}'.", name))
-                                );
+                                self.bind_method(class, name)?;
                             }
                         }
                     } else {
@@ -304,6 +302,10 @@ impl Vm {
                 Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
                 Instruction::Loop(offset) => {
                     self.current_frame_mut().ip -= offset as usize + 1;
+                }
+                Instruction::Method(slot) => {
+                    let name = self.current_chunk().read_string(slot);
+                    self.define_method(name);
                 }
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
@@ -392,6 +394,11 @@ impl Vm {
     fn call_value(&mut self, arg_count: u8) -> Result<(), LoxError> {
         let callee = self.peek(arg_count as usize);
         match callee {
+            Value::BoundMethod(bound) => {
+                let bound = self.allocator.deref(bound);
+                let method = bound.method;
+                self.call(method, arg_count)
+            }
             Value::Class(class) => {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
@@ -410,6 +417,30 @@ impl Vm {
                 Ok(())
             }
             _ => Err(self.runtime_error("Can only call functions and classes.")),
+        }
+    }
+
+    fn bind_method(
+        &mut self,
+        class: Reference<LoxClass>,
+        name: Reference<String>,
+    ) -> Result<(), LoxError> {
+        let class = self.allocator.deref(class);
+        if let Some(method) = class.methods.get(&name) {
+            let receiver = self.peek(0);
+            let method = match method {
+                Value::Closure(closure) => *closure,
+                _ => panic!("Inconsistent state. Method is not closure"),
+            };
+            let bound = BoundMethod::new(receiver, method);
+            let bound = self.alloc(bound);
+            self.pop();
+            self.push(Value::BoundMethod(bound));
+            Ok(())
+        } else {
+            let name = self.allocator.deref(name);
+            let msg = format!("Undefined property '{}'.", name);
+            Err(self.runtime_error(&msg))
         }
     }
 
@@ -438,6 +469,17 @@ impl Vm {
             } else {
                 i += 1;
             }
+        }
+    }
+
+    fn define_method(&mut self, name: Reference<String>) {
+        let method = self.peek(0);
+        if let Value::Class(class) = self.peek(1) {
+            let class = self.allocator.deref_mut(class);
+            class.methods.insert(name, method);
+            self.pop();
+        } else {
+            panic!("Invalid state: trying to define a method of non class");
         }
     }
 
