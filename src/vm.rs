@@ -397,6 +397,8 @@ impl Vm {
             Value::BoundMethod(bound) => {
                 let bound = self.allocator.deref(bound);
                 let method = bound.method;
+                let stack_pos = self.stack.len() - 1 - arg_count as usize;
+                self.stack[stack_pos] = bound.receiver;
                 self.call(method, arg_count)
             }
             Value::Class(class) => {

@@ -104,10 +104,15 @@ impl<'a> Compiler<'a> {
             scope_depth: 0,
         };
 
+        let name = match kind {
+            FunctionType::Method => "this",
+            _ => "",
+        };
+
         // TODO: This is ugly!
         let token = Token {
             kind: TokenType::Error,
-            lexeme: "",
+            lexeme: name,
             line: 0,
         };
         compiler.locals.push(Local::new(token, 0));
@@ -159,9 +164,21 @@ impl<'a> Compiler<'a> {
     }
 }
 
+struct ClassCompiler<'a> {
+    enclosing: Option<Box<ClassCompiler<'a>>>,
+    name: Token<'a>,
+}
+
+impl<'a> ClassCompiler<'a> {
+    fn new(name: Token<'a>, enclosing: Option<Box<ClassCompiler<'a>>>) -> Box<Self> {
+        Box::new(ClassCompiler { name, enclosing })
+    }
+}
+
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
+    class_compiler: Option<Box<ClassCompiler<'a>>>,
     allocator: &'a mut Allocator,
     current: Token<'a>,
     previous: Token<'a>,
@@ -304,7 +321,7 @@ impl<'a> Parser<'a> {
         rule(TokenType::Print, None, None, Precedence::None);
         rule(TokenType::Return, None, None, Precedence::None);
         rule(TokenType::Super, None, None, Precedence::None);
-        rule(TokenType::This, None, None, Precedence::None);
+        rule(TokenType::This, Some(Parser::this), None, Precedence::None);
         rule(
             TokenType::True,
             Some(Parser::literal),
@@ -319,6 +336,7 @@ impl<'a> Parser<'a> {
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(None, FunctionType::Script),
+            class_compiler: None,
             allocator,
             current: t1,
             previous: t2,
@@ -383,6 +401,11 @@ impl<'a> Parser<'a> {
         self.declare_variable();
         self.emit(Instruction::Class(name_constant));
         self.define_variable(name_constant);
+
+        let old_class_compiler = self.class_compiler.take();
+        let new_class_compiler = ClassCompiler::new(class_name, old_class_compiler);
+        self.class_compiler.replace(new_class_compiler);
+
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
@@ -390,6 +413,11 @@ impl<'a> Parser<'a> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
         self.emit(Instruction::Pop);
+
+        match self.class_compiler.take() {
+            Some(c) => self.class_compiler = c.enclosing,
+            None => self.class_compiler = None,
+        }
     }
 
     fn fun_declaration(&mut self) {
@@ -450,7 +478,7 @@ impl<'a> Parser<'a> {
     fn method(&mut self) {
         self.consume(TokenType::Identifier, "Expect method name.");
         let constant = self.identifier_constant(self.previous);
-        let function_type = FunctionType::Function;
+        let function_type = FunctionType::Method;
         self.function(function_type);
         self.emit(Instruction::Method(constant));
     }
@@ -651,6 +679,14 @@ impl<'a> Parser<'a> {
 
     fn variable(&mut self, can_assing: bool) {
         self.named_variable(self.previous, can_assing);
+    }
+
+    fn this(&mut self, _can_assign: bool) {
+        if let None = self.class_compiler {
+            self.error("Can't use 'this' outside of a class.");
+            return;
+        }
+        self.variable(false);
     }
 
     fn named_variable(&mut self, name: Token, can_assing: bool) {

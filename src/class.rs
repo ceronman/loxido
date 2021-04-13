@@ -80,7 +80,7 @@ impl Trace for Instance {
 
 #[derive(Debug)]
 pub struct BoundMethod {
-    receiver: Value,
+    pub receiver: Value,
     pub method: Reference<Closure>,
 }
 

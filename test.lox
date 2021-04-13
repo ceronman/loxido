@@ -144,7 +144,7 @@ fun test_gc_trigger() {
     print "Testing gc trigger...";
 
     var s = "hello";
-    for (var i = 1; i < 20000; i = i + 1) {
+    for (var i = 1; i < 10000; i = i + 1) {
         s = s + "world";
     }
     print "end";
@@ -167,6 +167,7 @@ fun test_class_fields() {
 }
 
 fun test_class_method() {
+    print "Testing class method...";
     class Scone {
         topping(first, second) {
             print "  scone with " + first + " and " + second;
@@ -175,6 +176,18 @@ fun test_class_method() {
 
     var scone = Scone();
     scone.topping("berries", "cream");
+}
+
+fun test_class_this() {
+    print "Testing class this...";
+    class Foo {
+        method() {
+            return this.name;
+        }
+    }
+    var f = Foo();
+    f.name = "manuel";
+    assert_eq("manuel", f.method());
 }
 
 test_arithmetic();
@@ -187,6 +200,7 @@ test_closures();
 test_closures2();
 test_class_fields();
 test_class_method();
+test_class_this();
 test_gc_trigger();
 
 

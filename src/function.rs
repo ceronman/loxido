@@ -6,8 +6,10 @@ use crate::{
     chunk::Value,
 };
 
+#[derive(Clone, Copy)]
 pub enum FunctionType {
     Function,
+    Method,
     Script,
 }
 
