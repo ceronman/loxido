@@ -62,16 +62,21 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: Table,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
+    init_string: Reference<String>,
 }
 
 impl Vm {
     pub fn new() -> Self {
+        let mut allocator = Allocator::new();
+        let init_string = allocator.intern("init".to_owned());
+
         let mut vm = Self {
-            allocator: Allocator::new(),
+            allocator,
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
             globals: Table::new(),
             open_upvalues: Vec::with_capacity(STACK_SIZE),
+            init_string,
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -404,9 +409,18 @@ impl Vm {
             Value::Class(class) => {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
-                self.stack
-                    .truncate(self.stack.len() - arg_count as usize - 1);
-                self.push(Value::Instance(instance));
+                let stack_pos = self.stack.len() - 1 - arg_count as usize;
+                self.stack[stack_pos] = Value::Instance(instance);
+                let class = self.allocator.deref(class);
+                if let Some(&initializer) = class.methods.get(&self.init_string) {
+                    if let Value::Closure(initializer) = initializer {
+                        return self.call(initializer, arg_count);
+                    }
+                    return Err(self.runtime_error("Initializer is not closure"));
+                } else if arg_count != 0 {
+                    let msg = format!("Expected 0 arguments but got {}.", arg_count);
+                    return Err(self.runtime_error(&msg));
+                }
                 Ok(())
             }
             Value::Closure(cid) => self.call(cid, arg_count),
@@ -540,5 +554,6 @@ impl Vm {
         }
 
         self.allocator.mark_table(&self.globals);
+        self.allocator.mark_object(self.init_string);
     }
 }

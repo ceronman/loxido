@@ -6,9 +6,11 @@ use crate::{
     chunk::Value,
 };
 
+// TODO: Move this to compiler?
 #[derive(Clone, Copy)]
 pub enum FunctionType {
     Function,
+    Initializer,
     Method,
     Script,
 }

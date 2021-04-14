@@ -105,7 +105,7 @@ impl<'a> Compiler<'a> {
         };
 
         let name = match kind {
-            FunctionType::Method => "this",
+            FunctionType::Method | FunctionType::Initializer => "this",
             _ => "",
         };
 
@@ -353,8 +353,7 @@ impl<'a> Parser<'a> {
             self.declaration();
         }
 
-        self.emit(Instruction::Nil);
-        self.emit(Instruction::Return);
+        self.emit_return();
 
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
@@ -436,8 +435,7 @@ impl<'a> Parser<'a> {
     }
 
     fn pop_compiler(&mut self) -> LoxFunction {
-        self.emit(Instruction::Nil);
-        self.emit(Instruction::Return);
+        self.emit_return();
         match self.compiler.enclosing.take() {
             Some(enclosing) => {
                 let compiler = mem::replace(&mut self.compiler, enclosing);
@@ -478,7 +476,11 @@ impl<'a> Parser<'a> {
     fn method(&mut self) {
         self.consume(TokenType::Identifier, "Expect method name.");
         let constant = self.identifier_constant(self.previous);
-        let function_type = FunctionType::Method;
+        let function_type = if self.previous.lexeme == "init" {
+            FunctionType::Initializer
+        } else {
+            FunctionType::Method
+        };
         self.function(function_type);
         self.emit(Instruction::Method(constant));
     }
@@ -538,10 +540,11 @@ impl<'a> Parser<'a> {
             self.error("Cannot return from top-level code.");
         }
         if self.matches(TokenType::Semicolon) {
-            // TODO: duplicated in many places:
-            self.emit(Instruction::Nil);
-            self.emit(Instruction::Return);
+            self.emit_return();
         } else {
+            if let FunctionType::Initializer = self.compiler.function_type {
+                self.error("Can't return a value from an initializer.");
+            }
             self.expression();
             self.consume(TokenType::Semicolon, "Expect ';' after return value.");
             self.emit(Instruction::Return);
@@ -997,6 +1000,14 @@ impl<'a> Parser<'a> {
     fn emit_two(&mut self, i1: Instruction, i2: Instruction) -> usize {
         self.compiler.function.chunk.write(i1, self.previous.line);
         self.compiler.function.chunk.write(i2, self.previous.line)
+    }
+
+    fn emit_return(&mut self) -> usize {
+        match self.compiler.function_type {
+            FunctionType::Initializer => self.emit(Instruction::GetLocal(0)),
+            _ => self.emit(Instruction::Nil),
+        };
+        self.emit(Instruction::Return)
     }
 
     fn start_loop(&self) -> usize {

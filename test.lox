@@ -190,6 +190,26 @@ fun test_class_this() {
     assert_eq("manuel", f.method());
 }
 
+fun test_class_initializer() {
+    print "Testing class initializer...";
+
+    class CoffeeMaker {
+      init(coffee) {
+        this.coffee = coffee;
+      }
+    
+      brew() {
+        print "  Enjoy your cup of " + this.coffee;
+        this.coffee = "other";
+      }
+    }
+    
+    var maker = CoffeeMaker("coffee and chicory");
+    assert_eq("coffee and chicory", maker.coffee);
+    maker.brew();
+    assert_eq("other", maker.coffee);
+}
+
 test_arithmetic();
 test_boolean();
 test_strings();
@@ -201,6 +221,7 @@ test_closures2();
 test_class_fields();
 test_class_method();
 test_class_this();
+test_class_initializer();
 test_gc_trigger();
 
 
