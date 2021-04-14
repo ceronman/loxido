@@ -210,6 +210,23 @@ fun test_class_initializer() {
     assert_eq("other", maker.coffee);
 }
 
+fun test_class_invoke_non_method() {
+    print "Testing class invoking non method...";
+
+    class Oops {
+      init() {
+        fun f() {
+          return "not a method";
+        }
+    
+        this.field = f;
+      }
+    }
+    
+    var oops = Oops();
+    assert_eq("not a method", oops.field());
+}
+
 test_arithmetic();
 test_boolean();
 test_strings();
@@ -222,6 +239,7 @@ test_class_fields();
 test_class_method();
 test_class_this();
 test_class_initializer();
+test_class_invoke_non_method();
 test_gc_trigger();
 
 

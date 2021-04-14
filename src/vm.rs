@@ -296,6 +296,10 @@ impl Vm {
                     self.push(value);
                 }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Invoke((index, arg_count)) => {
+                    let name = self.current_chunk().read_string(index);
+                    self.invoke(name, arg_count)?;
+                }
                 Instruction::Jump(offset) => {
                     self.current_frame_mut().ip += offset as usize;
                 }
@@ -402,6 +406,7 @@ impl Vm {
             Value::BoundMethod(bound) => {
                 let bound = self.allocator.deref(bound);
                 let method = bound.method;
+                // TODO: abstract this as a form of peek()
                 let stack_pos = self.stack.len() - 1 - arg_count as usize;
                 self.stack[stack_pos] = bound.receiver;
                 self.call(method, arg_count)
@@ -433,6 +438,44 @@ impl Vm {
                 Ok(())
             }
             _ => Err(self.runtime_error("Can only call functions and classes.")),
+        }
+    }
+
+    fn invoke(&mut self, name: Reference<String>, arg_count: u8) -> Result<(), LoxError> {
+        // TODO: make peek take u8?
+        let receiver = self.peek(arg_count as usize);
+        if let Value::Instance(instance) = receiver {
+            let instance = self.allocator.deref(instance);
+            if let Some(field) = instance.get_property(name) {
+                let stack_pos = self.stack.len() - 1 - arg_count as usize;
+                self.stack[stack_pos] = field;
+                self.call_value(arg_count)
+            } else {
+                let class = instance.class;
+                self.invoke_from_class(class, name, arg_count)
+            }
+        } else {
+            Err(self.runtime_error("Only instances have methods."))
+        }
+    }
+
+    fn invoke_from_class(
+        &mut self,
+        class: Reference<LoxClass>,
+        name: Reference<String>,
+        arg_count: u8,
+    ) -> Result<(), LoxError> {
+        let class = self.allocator.deref(class);
+        if let Some(&method) = class.methods.get(&name) {
+            if let Value::Closure(closure) = method {
+                self.call(closure, arg_count)
+            } else {
+                panic!("Got method that is not closure!")
+            }
+        } else {
+            let name = self.allocator.deref(name);
+            let msg = format!("Undefined property '{}'.", name);
+            Err(self.runtime_error(&msg))
         }
     }
 
@@ -517,6 +560,7 @@ impl Vm {
         }
     }
 
+    // TODO should not be public?
     pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
         self.mark_and_sweep();
         self.allocator.alloc(object)

@@ -20,6 +20,7 @@ pub enum Value {
     String(Reference<String>),
 }
 
+// TODO: Use From<> or To<> to implement this to boolean?
 impl Value {
     pub fn is_falsy(&self) -> bool {
         match self {
@@ -65,6 +66,7 @@ pub enum Instruction {
     GetProperty(u8),
     GetUpvalue(u8),
     Greater,
+    Invoke((u8, u8)),
     Jump(u16),
     JumpIfFalse(u16),
     Less,
@@ -149,6 +151,7 @@ impl Chunk {
             Instruction::GetProperty(i) => println!("OP_GET_PROPERTY {}", i),
             Instruction::GetUpvalue(i) => println!("OP_GET_UPVALUE {}", i),
             Instruction::Greater => println!("OP_GREATER"),
+            Instruction::Invoke((i, c)) => println!("OP_INVOKE {} {}", i, c),
             Instruction::Jump(offset) => println!("OP_JUMP {}", offset), // TODO:
             Instruction::JumpIfFalse(offset) => println!("OP_JUMP_IF_FALSE {}", offset), // TODO:
             Instruction::Less => println!("OP_LESS"),

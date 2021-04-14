@@ -51,6 +51,7 @@ impl Instance {
         }
     }
 
+    // TODO: Move these to Table
     pub fn get_property(&self, name: Reference<String>) -> Option<Value> {
         self.fields.get(&name).map(|&v| v)
     }

@@ -749,6 +749,9 @@ impl<'a> Parser<'a> {
         if can_assign && self.matches(TokenType::Equal) {
             self.expression();
             self.emit(Instruction::SetProperty(name));
+        } else if self.matches(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.emit(Instruction::Invoke((name, arg_count)));
         } else {
             self.emit(Instruction::GetProperty(name));
         }
