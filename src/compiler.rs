@@ -157,16 +157,14 @@ impl<'a> Compiler<'a> {
     }
 }
 
-struct ClassCompiler<'a> {
-    enclosing: Option<Box<ClassCompiler<'a>>>,
-    name: Token<'a>,
+struct ClassCompiler {
+    enclosing: Option<Box<ClassCompiler>>,
     has_superclass: bool,
 }
 
-impl<'a> ClassCompiler<'a> {
-    fn new(name: Token<'a>, enclosing: Option<Box<ClassCompiler<'a>>>) -> Box<Self> {
+impl ClassCompiler {
+    fn new(enclosing: Option<Box<ClassCompiler>>) -> Box<Self> {
         Box::new(ClassCompiler {
-            name,
             enclosing,
             has_superclass: false,
         })
@@ -176,7 +174,7 @@ impl<'a> ClassCompiler<'a> {
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
-    class_compiler: Option<Box<ClassCompiler<'a>>>,
+    class_compiler: Option<Box<ClassCompiler>>,
     allocator: &'a mut Allocator,
     current: Token<'a>,
     previous: Token<'a>,
@@ -406,7 +404,7 @@ impl<'a> Parser<'a> {
 
         // TODO: Find how to use stack based linked list: https://aloso.github.io/2021/04/12/linked-list.html
         let old_class_compiler = self.class_compiler.take();
-        let new_class_compiler = ClassCompiler::new(class_name, old_class_compiler);
+        let new_class_compiler = ClassCompiler::new(old_class_compiler);
         self.class_compiler.replace(new_class_compiler);
 
         if self.matches(TokenType::Less) {
@@ -717,7 +715,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Identifier, "Expect superclass method name.");
         let name = self.identifier_constant(self.previous);
         self.named_variable(Token::synthetic("this"), false);
-        
+
         if self.matches(TokenType::LeftParen) {
             let arg_count = self.argument_list();
             self.named_variable(Token::synthetic("super"), false);
