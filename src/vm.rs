@@ -414,6 +414,14 @@ impl Vm {
                     }
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
+                Instruction::SuperInvoke((index, arg_count)) => {
+                    let method_name = self.current_chunk().read_string(index);
+                    if let Value::Class(class) = self.pop() {
+                        self.invoke_from_class(class, method_name, arg_count)?;
+                    } else {
+                        panic!("super invoke with no class");
+                    }
+                }
                 Instruction::True => self.push(Value::Bool(true)),
             };
         }

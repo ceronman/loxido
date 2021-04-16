@@ -87,6 +87,7 @@ pub enum Instruction {
     SetProperty(u8),
     SetUpvalue(u8),
     Substract,
+    SuperInvoke((u8, u8)),
     True,
 }
 
@@ -174,6 +175,7 @@ impl Chunk {
             Instruction::SetProperty(i) => println!("OP_SET_PROPERTY {}", i),
             Instruction::SetUpvalue(i) => println!("OP_SET_UPVALUE {}", i),
             Instruction::Substract => println!("OP_SUBSTRACT"),
+            Instruction::SuperInvoke((i, c)) => println!("OP_SUPER_INVOKE {} {}", i, c),
             Instruction::True => println!("OP_TRUE"),
         }
     }

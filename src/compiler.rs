@@ -717,8 +717,15 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Identifier, "Expect superclass method name.");
         let name = self.identifier_constant(self.previous);
         self.named_variable(Token::synthetic("this"), false);
-        self.named_variable(Token::synthetic("super"), false);
-        self.emit(Instruction::GetSuper(name));
+        
+        if self.matches(TokenType::LeftParen) {
+            let arg_count = self.argument_list();
+            self.named_variable(Token::synthetic("super"), false);
+            self.emit(Instruction::SuperInvoke((name, arg_count)));
+        } else {
+            self.named_variable(Token::synthetic("super"), false);
+            self.emit(Instruction::GetSuper(name));
+        }
     }
 
     fn this(&mut self, _can_assign: bool) {
