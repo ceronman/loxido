@@ -282,6 +282,14 @@ impl Vm {
                         return Err(self.runtime_error("Only instances have properties."));
                     }
                 }
+                Instruction::GetSuper(slot) => {
+                    let name = self.current_chunk().read_string(slot);
+                    if let Value::Class(superclass) = self.pop() {
+                        self.bind_method(superclass, name)?
+                    } else {
+                        panic!("super found no class");
+                    }
+                }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
                         let current_closure = self.allocator.deref(self.current_frame().closure);
@@ -296,6 +304,18 @@ impl Vm {
                     self.push(value);
                 }
                 Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Inherit => {
+                    let pair = (self.peek(0), self.peek(1));
+                    if let (Value::Class(subclass), Value::Class(superclass)) = pair {
+                        let superclass = self.allocator.deref(superclass);
+                        let methods = superclass.methods.clone();
+                        let mut subclass = self.allocator.deref_mut(subclass);
+                        subclass.methods = methods;
+                        self.pop();
+                    } else {
+                        return Err(self.runtime_error("Superclass must be a class."));
+                    }
+                }
                 Instruction::Invoke((index, arg_count)) => {
                     let name = self.current_chunk().read_string(index);
                     self.invoke(name, arg_count)?;

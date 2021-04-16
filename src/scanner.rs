@@ -58,6 +58,16 @@ pub struct Token<'a> {
     pub lexeme: &'a str,
 }
 
+impl<'a> Token<'a> {
+    pub fn synthetic(text: &'a str) -> Token<'a> {
+        Token {
+            kind: TokenType::Error,
+            lexeme: text,
+            line: 0,
+        }
+    }
+}
+
 pub struct Scanner<'a> {
     keywords: HashMap<&'static str, TokenType>,
     code: &'a str,

@@ -104,16 +104,9 @@ impl<'a> Compiler<'a> {
             scope_depth: 0,
         };
 
-        let name = match kind {
-            FunctionType::Method | FunctionType::Initializer => "this",
-            _ => "",
-        };
-
-        // TODO: This is ugly!
-        let token = Token {
-            kind: TokenType::Error,
-            lexeme: name,
-            line: 0,
+        let token = match kind {
+            FunctionType::Method | FunctionType::Initializer => Token::synthetic("this"),
+            _ => Token::synthetic(""),
         };
         compiler.locals.push(Local::new(token, 0));
         Box::new(compiler)
@@ -167,11 +160,16 @@ impl<'a> Compiler<'a> {
 struct ClassCompiler<'a> {
     enclosing: Option<Box<ClassCompiler<'a>>>,
     name: Token<'a>,
+    has_superclass: bool,
 }
 
 impl<'a> ClassCompiler<'a> {
     fn new(name: Token<'a>, enclosing: Option<Box<ClassCompiler<'a>>>) -> Box<Self> {
-        Box::new(ClassCompiler { name, enclosing })
+        Box::new(ClassCompiler {
+            name,
+            enclosing,
+            has_superclass: false,
+        })
     }
 }
 
@@ -320,7 +318,12 @@ impl<'a> Parser<'a> {
         rule(TokenType::Or, None, Some(Parser::or_op), Precedence::Or);
         rule(TokenType::Print, None, None, Precedence::None);
         rule(TokenType::Return, None, None, Precedence::None);
-        rule(TokenType::Super, None, None, Precedence::None);
+        rule(
+            TokenType::Super,
+            Some(Parser::super_),
+            None,
+            Precedence::None,
+        );
         rule(TokenType::This, Some(Parser::this), None, Precedence::None);
         rule(
             TokenType::True,
@@ -401,9 +404,24 @@ impl<'a> Parser<'a> {
         self.emit(Instruction::Class(name_constant));
         self.define_variable(name_constant);
 
+        // TODO: Find how to use stack based linked list: https://aloso.github.io/2021/04/12/linked-list.html
         let old_class_compiler = self.class_compiler.take();
         let new_class_compiler = ClassCompiler::new(class_name, old_class_compiler);
         self.class_compiler.replace(new_class_compiler);
+
+        if self.matches(TokenType::Less) {
+            self.consume(TokenType::Identifier, "Expect superclass name.");
+            self.variable(false);
+            if class_name.lexeme == self.previous.lexeme {
+                self.error("A class can't inherit from itself.");
+            }
+            self.begin_scope();
+            self.add_local(Token::synthetic("super"));
+            self.define_variable(0);
+            self.named_variable(class_name, false);
+            self.emit(Instruction::Inherit);
+            self.class_compiler.as_mut().unwrap().has_superclass = true;
+        }
 
         self.named_variable(class_name, false);
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
@@ -412,6 +430,9 @@ impl<'a> Parser<'a> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
         self.emit(Instruction::Pop);
+        if self.class_compiler.as_ref().unwrap().has_superclass {
+            self.end_scope();
+        }
 
         match self.class_compiler.take() {
             Some(c) => self.class_compiler = c.enclosing,
@@ -682,6 +703,22 @@ impl<'a> Parser<'a> {
 
     fn variable(&mut self, can_assing: bool) {
         self.named_variable(self.previous, can_assing);
+    }
+
+    fn super_(&mut self, _can_assign: bool) {
+        if let Some(current_class) = self.class_compiler.as_ref() {
+            if !current_class.has_superclass {
+                self.error("Can't use 'super' outside of a class.");
+            }
+        } else {
+            self.error("Can't use 'super' in a class with no superclass.");
+        }
+        self.consume(TokenType::Dot, "Expect '.' after 'super'.");
+        self.consume(TokenType::Identifier, "Expect superclass method name.");
+        let name = self.identifier_constant(self.previous);
+        self.named_variable(Token::synthetic("this"), false);
+        self.named_variable(Token::synthetic("super"), false);
+        self.emit(Instruction::GetSuper(name));
     }
 
     fn this(&mut self, _can_assign: bool) {

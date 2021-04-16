@@ -227,6 +227,30 @@ fun test_class_invoke_non_method() {
     assert_eq("not a method", oops.field());
 }
 
+fun test_class_super() {
+    print "Testing class super...";
+    class A {
+      method() {
+        return "A method";
+      }
+    }
+    
+    class B < A {
+      method() {
+        return "B method";
+      }
+    
+      test() {
+        return super.method();
+      }
+    }
+    
+    class C < B {}
+
+    assert_eq("B method", B().method());
+    assert_eq("A method", C().test());
+}
+
 test_arithmetic();
 test_boolean();
 test_strings();
@@ -240,6 +264,7 @@ test_class_method();
 test_class_this();
 test_class_initializer();
 test_class_invoke_non_method();
+test_class_super();
 test_gc_trigger();
 
 

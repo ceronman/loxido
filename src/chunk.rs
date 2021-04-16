@@ -49,6 +49,7 @@ impl fmt::Display for Value {
     }
 }
 
+// TODO: maybe use type aliases for the inner values. e.g. u8 -> constant
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {
     Add,
@@ -64,8 +65,10 @@ pub enum Instruction {
     GetGlobal(u8),
     GetLocal(u8),
     GetProperty(u8),
+    GetSuper(u8),
     GetUpvalue(u8),
     Greater,
+    Inherit,
     Invoke((u8, u8)),
     Jump(u16),
     JumpIfFalse(u16),
@@ -149,9 +152,11 @@ impl Chunk {
             Instruction::GetGlobal(i) => self.disassemble_constant("OP_GET_GLOBAL", *i),
             Instruction::GetLocal(i) => println!("OP_GET_LOCAL {}", i),
             Instruction::GetProperty(i) => println!("OP_GET_PROPERTY {}", i),
+            Instruction::GetSuper(i) => println!("OP_GET_SUPER {}", i),
             Instruction::GetUpvalue(i) => println!("OP_GET_UPVALUE {}", i),
             Instruction::Greater => println!("OP_GREATER"),
             Instruction::Invoke((i, c)) => println!("OP_INVOKE {} {}", i, c),
+            Instruction::Inherit => println!("OP_INHERIT"),
             Instruction::Jump(offset) => println!("OP_JUMP {}", offset), // TODO:
             Instruction::JumpIfFalse(offset) => println!("OP_JUMP_IF_FALSE {}", offset), // TODO:
             Instruction::Less => println!("OP_LESS"),
