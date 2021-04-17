@@ -1,16 +1,21 @@
-use std::{env, fs, process::Command};
 use std::path::PathBuf;
+use std::{env, fs, process::Command};
 
 use regex::Regex;
 
 extern crate test_generator;
 
-
 use test_generator::test_resources;
 
 fn loxido_command() -> Command {
     // Create full path to binary
-    let mut path = env::current_exe().unwrap().parent().unwrap().parent().unwrap().to_owned();
+    let mut path = env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_owned();
     path.push(env!("CARGO_PKG_NAME"));
     path.set_extension(env::consts::EXE_EXTENSION);
     Command::new(path.into_os_string())
@@ -18,13 +23,13 @@ fn loxido_command() -> Command {
 
 struct RuntimeError {
     line_prefix: String,
-    message: String
+    message: String,
 }
 
 struct Expected {
     out: Vec<String>,
     compile_err: Vec<String>,
-    runtime_err: Option<RuntimeError>, 
+    runtime_err: Option<RuntimeError>,
 }
 
 fn parse_comments(path: &PathBuf) -> Expected {
@@ -60,9 +65,9 @@ fn parse_comments(path: &PathBuf) -> Expected {
         if let Some(m) = runtime_error_re.captures(line) {
             let message = m.get(1).unwrap().as_str().to_owned();
             let line_prefix = format!("[line {}]", i + 1);
-            expected.runtime_err = Some(RuntimeError{
+            expected.runtime_err = Some(RuntimeError {
                 line_prefix,
-                message
+                message,
             });
         }
     }
@@ -76,22 +81,51 @@ fn run_file_test(filename: &str) {
 
     let output = loxido_command().arg(path).output().unwrap();
 
-    let out: Vec<String> = String::from_utf8(output.stdout).unwrap().lines().map(|x| x.to_owned()).collect();
-    let err: Vec<String> = String::from_utf8(output.stderr).unwrap().lines().map(|x| x.to_owned()).collect();
+    let out: Vec<String> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|x| x.to_owned())
+        .collect();
+    let err: Vec<String> = String::from_utf8(output.stderr)
+        .unwrap()
+        .lines()
+        .map(|x| x.to_owned())
+        .collect();
 
-    match (expected.runtime_err.is_none(), expected.compile_err.is_empty()) {
-        (true, true) => assert!(output.status.success(), "Program exited with failure, expected success"),
-        (false, true) => assert_eq!(output.status.code().unwrap(), 70, "Runtime errors should have error code 70"),
-        (true, false) => assert_eq!(output.status.code().unwrap(), 65, "Compile errors should have error code 65"),
-        (false, false) => panic!("Simultaneous error and compile error")
+    match (
+        expected.runtime_err.is_none(),
+        expected.compile_err.is_empty(),
+    ) {
+        (true, true) => assert!(
+            output.status.success(),
+            "Program exited with failure, expected success"
+        ),
+        (false, true) => assert_eq!(
+            output.status.code().unwrap(),
+            70,
+            "Runtime errors should have error code 70"
+        ),
+        (true, false) => assert_eq!(
+            output.status.code().unwrap(),
+            65,
+            "Compile errors should have error code 65"
+        ),
+        (false, false) => panic!("Simultaneous error and compile error"),
     }
 
     if let Some(e) = expected.runtime_err {
         assert_eq!(e.message, err[0], "Runtime error should match");
-        assert!(err[1].starts_with(&e.line_prefix), "Runtime error line should match");
+        assert!(
+            err[1].starts_with(&e.line_prefix),
+            "Runtime error line should match"
+        );
     } else {
         if !err.is_empty() {
-            assert_eq!(output.status.code().unwrap(), 65, "Compile errors should have error code 65");
+            assert_eq!(
+                output.status.code().unwrap(),
+                65,
+                "Compile errors should have error code 65"
+            );
         }
         assert_eq!(expected.compile_err, err, "Compile error should match");
     }
