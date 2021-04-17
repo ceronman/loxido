@@ -8,7 +8,6 @@ mod function;
 mod scanner;
 mod vm;
 
-use chunk::{Instruction, Value};
 use error::LoxError;
 use std::env;
 use std::fs;
@@ -51,8 +50,6 @@ fn run_file(vm: &mut Vm, path: &str) {
 }
 
 fn main() {
-    println!("value size:       {}", std::mem::size_of::<Value>());
-    println!("instruction size: {}", std::mem::size_of::<Instruction>());
     let args: Vec<String> = env::args().collect();
     let mut vm = Vm::new();
     match args.len() {

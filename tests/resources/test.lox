@@ -1,0 +1,271 @@
+fun assert_eq(a, b) {
+    if (a != b) {
+        panic("assertion failed", a, b);
+    }
+}
+
+fun assert_true(a) {
+    if (!a) {
+        panic("assertion failed", a);
+    }
+}
+
+fun assert_false(a) {
+    if (a) {
+        panic("assertion failed", a);
+    }
+}
+
+fun test_arithmetic() {
+    print "Testing arithmetic...";
+
+    assert_eq(2 * 3, 6);
+    assert_eq(2 + 3, 5);
+    assert_eq(30 - 20, 10);
+    assert_eq(100 / 4, 25);
+
+    var a = 25;
+    var b = 4;
+    assert_eq(100, a * b);
+
+    assert_eq(100 + 2 * 5, 110);
+    assert_eq((100 + 2) * 5, 510);
+}
+
+fun test_boolean() {
+    print "Testing boolean...";
+
+    assert_true(true);
+    assert_true(!false);
+    assert_true(true and true);
+    assert_false(true and false);
+    assert_true(true or false);
+    assert_true(false or true);
+    assert_true(10 > 5);
+    assert_false(10 < 5);
+    assert_true(10 >= 5);
+    assert_true(10 >= 10);
+    assert_false(10 > 10);
+}
+
+fun test_strings() {
+    print "Testing strings...";
+
+    var a = "hello" + " world";
+    assert_eq("hello world", a);
+}
+
+fun test_if() {
+    print "Testing if...";
+
+    var a = 0;
+    if (5 < 10) {
+        a = 1;
+    } else {
+        a = 2;
+    }
+
+    assert_eq(1, a);
+
+    if (5 > 10) {
+        a = 1;
+    } else {
+        a = 2;
+    }
+
+    assert_eq(2, a);
+}
+
+fun test_loops() {
+    print "Testing loops...";
+
+    var a = 5;
+    while (a > 0) {
+        a = a - 1;
+    }
+    assert_eq(0, a);
+
+    var b = 0;
+    for (var i = 1; i < 100; i = i + 1) {
+        b = b + i;
+    }
+    assert_eq(4950, b);
+}
+
+fun test_functions() {
+    print "Testing functions...";
+    fun a() {
+        return 1;
+    }
+
+    assert_eq(1, a());
+
+    fun b(x, y) {
+        return x + y;
+    }
+
+    assert_eq(15, b(10, 5));
+}
+
+fun test_closures() {
+    print "Testing closures...";
+    var result = nil;
+    fun makeClosure() {
+        var local = "local";
+        fun closure() {
+            print "  Local is " + local;
+            result = "result";
+        }
+        return closure;
+    }
+
+    var closure = makeClosure();
+    closure();
+
+    assert_eq("result", result);
+}
+
+fun test_closures2() {
+    print "Testing closures 2...";
+    fun makeClosure2(value) {
+        fun closure() {
+            print " " + value;
+        }
+        return closure;
+    }
+
+    var doughnut = makeClosure2("doughnut");
+    var bagel = makeClosure2("bagel");
+    doughnut();
+    bagel();
+}
+
+fun test_gc_trigger() {
+    print "Testing gc trigger...";
+
+    var s = "hello";
+    for (var i = 1; i < 10000; i = i + 1) {
+        s = s + "world";
+    }
+    print "end";
+}
+
+fun test_class_fields() {
+    print "Testing class fields...";
+
+    class Foo {}
+
+    var foo = Foo();
+    foo.name = "Manuel";
+    foo.id = 123;
+
+    assert_eq("Manuel", foo.name);
+    assert_eq(123, foo.id);
+
+    foo.id = 456;
+    assert_eq(456, foo.id);
+}
+
+fun test_class_method() {
+    print "Testing class method...";
+    class Scone {
+        topping(first, second) {
+            print "  scone with " + first + " and " + second;
+        }
+    }
+
+    var scone = Scone();
+    scone.topping("berries", "cream");
+}
+
+fun test_class_this() {
+    print "Testing class this...";
+    class Foo {
+        method() {
+            return this.name;
+        }
+    }
+    var f = Foo();
+    f.name = "manuel";
+    assert_eq("manuel", f.method());
+}
+
+fun test_class_initializer() {
+    print "Testing class initializer...";
+
+    class CoffeeMaker {
+      init(coffee) {
+        this.coffee = coffee;
+      }
+    
+      brew() {
+        print "  Enjoy your cup of " + this.coffee;
+        this.coffee = "other";
+      }
+    }
+    
+    var maker = CoffeeMaker("coffee and chicory");
+    assert_eq("coffee and chicory", maker.coffee);
+    maker.brew();
+    assert_eq("other", maker.coffee);
+}
+
+fun test_class_invoke_non_method() {
+    print "Testing class invoking non method...";
+
+    class Oops {
+      init() {
+        fun f() {
+          return "not a method";
+        }
+    
+        this.field = f;
+      }
+    }
+    
+    var oops = Oops();
+    assert_eq("not a method", oops.field());
+}
+
+fun test_class_super() {
+    print "Testing class super...";
+    class A {
+      method() {
+        return "A method";
+      }
+    }
+    
+    class B < A {
+      method() {
+        return "B method";
+      }
+    
+      test() {
+        return super.method();
+      }
+    }
+    
+    class C < B {}
+
+    assert_eq("B method", B().method());
+    assert_eq("A method", C().test());
+}
+
+test_arithmetic();
+test_boolean();
+test_strings();
+test_if();
+test_loops();
+test_functions();
+test_closures();
+test_closures2();
+test_class_fields();
+test_class_method();
+test_class_this();
+test_class_initializer();
+test_class_invoke_non_method();
+test_class_super();
+test_gc_trigger();
+
+
+print "++++++++++++++END OF THE TEST+++++++++++++++++++++";
