@@ -120,7 +120,6 @@ impl Vm {
         self.push(Value::Function(function));
         let closure = self.alloc(Closure::new(function));
         self.frames.push(CallFrame::new(closure));
-        self.pop();
         self.run()
     }
 
