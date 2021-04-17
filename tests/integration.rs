@@ -16,62 +16,90 @@ fn loxido_command() -> Command {
     Command::new(path.into_os_string())
 }
 
-fn parse_comments(path: &PathBuf) -> (Vec<String>, Vec<String>) {
+struct RuntimeError {
+    line_prefix: String,
+    message: String
+}
+
+struct Expected {
+    out: Vec<String>,
+    compile_err: Vec<String>,
+    runtime_err: Option<RuntimeError>, 
+}
+
+fn parse_comments(path: &PathBuf) -> Expected {
     let output_re = Regex::new(r"// expect: ?(.*)").unwrap();
     let error_re = Regex::new(r"// (Error.*)").unwrap();
     let error_line_re = Regex::new(r"// \[(?:c )?line (\d+)\] (Error.*)").unwrap();
     let runtime_error_re = Regex::new(r"// expect runtime error: (.+)").unwrap();
 
-    let mut expected_out = vec![];
-    let mut expected_err = vec![];
+    let mut expected = Expected {
+        out: vec![],
+        compile_err: vec![],
+        runtime_err: None,
+    };
 
     println!("{}", path.display());
     let content = fs::read_to_string(path).unwrap();
     for (i, line) in content.lines().enumerate() {
         if let Some(m) = output_re.captures(line) {
             let s = m.get(1).unwrap().as_str().to_owned();
-            expected_out.push(s);
+            expected.out.push(s);
         }
         if let Some(m) = error_line_re.captures(line) {
             let line = m.get(1).unwrap().as_str();
             let msg = m.get(2).unwrap().as_str();
             let s = format!("[line {}] {}", line, msg);
-            expected_err.push(s);
+            expected.compile_err.push(s);
         }
         if let Some(m) = error_re.captures(line) {
             let msg = m.get(1).unwrap().as_str();
             let s = format!("[line {}] {}", i + 1, msg);
-            expected_err.push(s);
+            expected.compile_err.push(s);
         }
         if let Some(m) = runtime_error_re.captures(line) {
-            let msg = m.get(1).unwrap().as_str().to_owned();
-            let s = format!("[line {}]", i + 1);
-            expected_err.push(msg.to_owned());
-            expected_err.push(s);
+            let message = m.get(1).unwrap().as_str().to_owned();
+            let line_prefix = format!("[line {}]", i + 1);
+            expected.runtime_err = Some(RuntimeError{
+                line_prefix,
+                message
+            });
         }
     }
-    (expected_out, expected_err)
+    expected
 }
 
 fn run_file_test(filename: &str) {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push(filename);
-    let (expected_out, expected_err) = parse_comments(&path);
+    let expected = parse_comments(&path);
 
     let output = loxido_command().arg(path).output().unwrap();
-    let out = String::from_utf8(output.stdout).unwrap();
-    let err = String::from_utf8(output.stderr).unwrap();
 
-    for (expected, actual) in expected_out.iter().zip(out.lines()) {
-        assert_eq!(expected, actual);
+    let out: Vec<String> = String::from_utf8(output.stdout).unwrap().lines().map(|x| x.to_owned()).collect();
+    let err: Vec<String> = String::from_utf8(output.stderr).unwrap().lines().map(|x| x.to_owned()).collect();
+
+    match (expected.runtime_err.is_none(), expected.compile_err.is_empty()) {
+        (true, true) => assert!(output.status.success(), "Program exited with failure, expected success"),
+        (false, true) => assert_eq!(output.status.code().unwrap(), 70, "Runtime errors should have error code 70"),
+        (true, false) => assert_eq!(output.status.code().unwrap(), 65, "Compile errors should have error code 65"),
+        (false, false) => panic!("Simultaneous error and compile error")
     }
 
-    for (expected, actual) in expected_err.iter().zip(err.lines()) {
-        assert_eq!(expected, actual);
+    if let Some(e) = expected.runtime_err {
+        assert_eq!(e.message, err[0], "Runtime error should match");
+        assert!(err[1].starts_with(&e.line_prefix), "Runtime error line should match");
+    } else {
+        if !err.is_empty() {
+            assert_eq!(output.status.code().unwrap(), 65, "Compile errors should have error code 65");
+        }
+        assert_eq!(expected.compile_err, err, "Compile error should match");
     }
+
+    assert_eq!(expected.out, out, "Output should match");
 }
 
-#[test_resources("tests/resources/assignment/*.lox")]
+#[test_resources("tests/resources/**/*.lox")]
 fn test_helloworld(resource: &str) {
     run_file_test(resource);
 }
