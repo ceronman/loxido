@@ -164,7 +164,7 @@ impl<'a> Scanner<'a> {
         }
     }
     fn peek_next(&self) -> u8 {
-        if self.is_at_end() {
+        if self.current > self.code.len() - 2 {
             b'\0'
         } else {
             self.code.as_bytes()[self.current + 1]
