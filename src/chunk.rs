@@ -1,4 +1,9 @@
-use crate::{allocator::{Allocator, Reference, Trace}, class::{BoundMethod, Instance, LoxClass}, closure::Closure, function::{LoxFunction, NativeFn}};
+use crate::{
+    allocator::{Allocator, Reference, Trace},
+    class::{BoundMethod, Instance, LoxClass},
+    closure::Closure,
+    function::{LoxFunction, NativeFn},
+};
 use std::{any::Any, collections::HashMap, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,12 +44,12 @@ impl Trace for Value {
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => {
                 // Hack to be able to print -0.0 as -0. Check https://github.com/rust-lang/rfcs/issues/1074
-                if *value == 0.0 && value.signum() == -1.0 { 
-                    write!(f, "-{}", value) 
-                } else { 
-                    write!(f, "{}", value) 
+                if *value == 0.0 && value.signum() == -1.0 {
+                    write!(f, "-{}", value)
+                } else {
+                    write!(f, "{}", value)
                 }
-            },
+            }
             Value::String(value) => allocator.deref(*value).format(f, allocator),
         }
     }
@@ -59,7 +64,7 @@ impl Trace for Value {
             Value::Function(value) => allocator.mark_object(*value),
             Value::Instance(value) => allocator.mark_object(*value),
             Value::String(value) => allocator.mark_object(*value),
-            _ => ()
+            _ => (),
         }
     }
     fn as_any(&self) -> &dyn Any {

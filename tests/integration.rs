@@ -74,6 +74,7 @@ fn parse_comments(path: &PathBuf) -> Expected {
     expected
 }
 
+#[test_resources("tests/integration/*/*.lox")]
 fn run_file_test(filename: &str) {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push(filename);
@@ -115,7 +116,11 @@ fn run_file_test(filename: &str) {
 
     if let Some(e) = expected.runtime_err {
         assert_eq!(e.message, err[0], "Runtime error should match");
-        assert_eq!(err[1][0..e.line_prefix.len()], e.line_prefix, "Runtime error line should match");            
+        assert_eq!(
+            err[1][0..e.line_prefix.len()],
+            e.line_prefix,
+            "Runtime error line should match"
+        );
     } else {
         if !err.is_empty() {
             assert_eq!(
@@ -128,9 +133,4 @@ fn run_file_test(filename: &str) {
     }
 
     assert_eq!(expected.out, out, "Output should match");
-}
-
-#[test_resources("tests/integration/*/*.lox")]
-fn test_helloworld(resource: &str) {
-    run_file_test(resource);
 }

@@ -709,7 +709,7 @@ impl<'a> Parser<'a> {
                 self.error("Can't use 'super' in a class with no superclass.");
             }
         } else {
-            self.error("Can't use 'super' outside of a class."); 
+            self.error("Can't use 'super' outside of a class.");
         }
         self.consume(TokenType::Dot, "Expect '.' after 'super'.");
         self.consume(TokenType::Identifier, "Expect superclass method name.");
@@ -1006,7 +1006,7 @@ impl<'a> Parser<'a> {
         match token.kind {
             TokenType::Eof => eprint!(" at end"),
             TokenType::Error => (),
-            _ => eprint!(" at '{}'", token.lexeme)
+            _ => eprint!(" at '{}'", token.lexeme),
         };
         eprintln!(": {}", msg);
     }

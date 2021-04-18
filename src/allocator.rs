@@ -18,15 +18,12 @@ pub trait Trace {
 }
 pub struct TraceFormatter<'allocator, T: Trace> {
     allocator: &'allocator Allocator,
-    object: T
+    object: T,
 }
 
 impl<'allocator, T: Trace> TraceFormatter<'allocator, T> {
     pub fn new(object: T, allocator: &'allocator Allocator) -> Self {
-        TraceFormatter {
-            object,
-            allocator
-        }
+        TraceFormatter { object, allocator }
     }
 }
 
