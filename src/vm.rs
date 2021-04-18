@@ -320,7 +320,7 @@ impl Vm {
                     self.current_frame_mut().ip += offset as usize;
                 }
                 Instruction::JumpIfFalse(offset) => {
-                    if self.peek(0).is_falsy() {
+                    if self.peek(0).is_falsey() {
                         self.current_frame_mut().ip += offset as usize;
                     }
                 }
@@ -344,7 +344,7 @@ impl Vm {
                 Instruction::Nil => self.push(Value::Nil),
                 Instruction::Not => {
                     let value = self.pop();
-                    self.push(Value::Bool(value.is_falsy()));
+                    self.push(Value::Bool(value.is_falsey()));
                 }
                 Instruction::Pop => {
                     self.pop();

@@ -17,11 +17,11 @@ pub enum Value {
 
 // TODO: Use From<> or To<> to implement this to boolean?
 impl Value {
-    pub fn is_falsy(&self) -> bool {
+    pub fn is_falsey(&self) -> bool {
         match self {
-            Value::Nil => false,
+            Value::Nil => true,
             Value::Bool(value) => !value,
-            _ => true,
+            _ => false,
         }
     }
 }
