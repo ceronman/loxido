@@ -218,6 +218,9 @@ impl<'a> Scanner<'a> {
 
     fn string(&mut self) -> Token<'a> {
         while self.peek() != b'"' && !self.is_at_end() {
+            if self.peek() == b'\n' {
+                self.line += 1;
+            }
             self.advance();
         }
 

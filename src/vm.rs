@@ -183,7 +183,7 @@ impl Vm {
                         _ => {
                             self.push(a);
                             self.push(b);
-                            return Err(self.runtime_error("Operands must be numbers."));
+                            return Err(self.runtime_error("Operands must be two numbers or two strings."));
                         }
                     }
                 }

@@ -117,7 +117,7 @@ impl<'a> Compiler<'a> {
             if name.lexeme == local.name.lexeme {
                 if local.depth == -1 {
                     self.errors
-                        .push("Cannot read local variable in its own initializer.");
+                        .push("Can't read local variable in its own initializer.");
                 }
                 return Some(i as u8);
             }
@@ -556,7 +556,7 @@ impl<'a> Parser<'a> {
 
     fn return_statement(&mut self) {
         if let FunctionType::Script = self.compiler.function_type {
-            self.error("Cannot return from top-level code.");
+            self.error("Can't return from top-level code.");
         }
         if self.matches(TokenType::Semicolon) {
             self.emit_return();
@@ -706,10 +706,10 @@ impl<'a> Parser<'a> {
     fn super_(&mut self, _can_assign: bool) {
         if let Some(current_class) = self.class_compiler.as_ref() {
             if !current_class.has_superclass {
-                self.error("Can't use 'super' outside of a class.");
+                self.error("Can't use 'super' in a class with no superclass.");
             }
         } else {
-            self.error("Can't use 'super' in a class with no superclass.");
+            self.error("Can't use 'super' outside of a class."); 
         }
         self.consume(TokenType::Dot, "Expect '.' after 'super'.");
         self.consume(TokenType::Identifier, "Expect superclass method name.");
@@ -921,7 +921,7 @@ impl<'a> Parser<'a> {
         }
         let name = self.previous;
         if self.is_local_declared(name) {
-            self.error("Variable with this name already declared in this scope.");
+            self.error("Already variable with this name in this scope.");
         }
         self.add_local(name);
     }
@@ -1003,11 +1003,11 @@ impl<'a> Parser<'a> {
         self.had_error = true;
         self.panic_mode = true;
         eprint!("[line {}] Error", token.line);
-        if token.kind == TokenType::Eof {
-            eprint!(" at end");
-        } else {
-            eprint!(" at '{}'", token.lexeme);
-        }
+        match token.kind {
+            TokenType::Eof => eprint!(" at end"),
+            TokenType::Error => (),
+            _ => eprint!(" at '{}'", token.lexeme)
+        };
         eprintln!(": {}", msg);
     }
 

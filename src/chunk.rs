@@ -37,7 +37,14 @@ impl Trace for Value {
             Value::Instance(value) => allocator.deref(*value).format(f, allocator),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
-            Value::Number(value) => write!(f, "{}", value),
+            Value::Number(value) => {
+                // Hack to be able to print -0.0 as -0. Check https://github.com/rust-lang/rfcs/issues/1074
+                if *value == 0.0 && value.signum() == -1.0 { 
+                    write!(f, "-{}", value) 
+                } else { 
+                    write!(f, "{}", value) 
+                }
+            },
             Value::String(value) => allocator.deref(*value).format(f, allocator),
         }
     }
