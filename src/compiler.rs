@@ -472,7 +472,7 @@ impl<'a> Parser<'a> {
             loop {
                 self.compiler.function.arity += 1;
                 if self.compiler.function.arity > 255 {
-                    self.error_at_current("Cannot have more than 255 parameters.");
+                    self.error_at_current("Can't have more than 255 parameters.");
                 }
                 let param = self.parse_variable("Expect parameter name.");
                 self.define_variable(param);
@@ -800,13 +800,13 @@ impl<'a> Parser<'a> {
     }
 
     fn argument_list(&mut self) -> u8 {
-        let mut count = 0;
+        let mut count: usize = 0;
         if !self.check(TokenType::RightParen) {
             loop {
                 self.expression();
 
                 if count == 255 {
-                    self.error("Cannot have more than 255 arguments.");
+                    self.error("Can't have more than 255 arguments.");
                 }
 
                 count += 1;
@@ -816,7 +816,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(TokenType::RightParen, "Expect ')' after arguments.");
-        count
+        count as u8
     }
 
     fn grouping(&mut self, _can_assing: bool) {
