@@ -1,10 +1,5 @@
-use crate::{
-    allocator::Reference,
-    class::{BoundMethod, Instance, LoxClass},
-    closure::Closure,
-    function::{LoxFunction, NativeFn},
-};
-use std::{collections::HashMap, fmt};
+use crate::{allocator::{Allocator, Reference, Trace}, class::{BoundMethod, Instance, LoxClass}, closure::Closure, function::{LoxFunction, NativeFn}};
+use std::{any::Any, collections::HashMap, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -31,21 +26,40 @@ impl Value {
     }
 }
 
-// TODO: refactor and fix
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Trace for Value {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
         match self {
             Value::Bool(value) => write!(f, "{}", value),
-            Value::BoundMethod(value) => write!(f, "{:?}", value),
-            Value::Class(value) => write!(f, "{:?}", value),
-            Value::Closure(value) => write!(f, "{:?}", value),
-            Value::Function(value) => write!(f, "{:?}", value),
-            Value::Instance(value) => write!(f, "{:?}", value),
+            Value::BoundMethod(value) => allocator.deref(*value).format(f, allocator),
+            Value::Class(value) => allocator.deref(*value).format(f, allocator),
+            Value::Closure(value) => allocator.deref(*value).format(f, allocator),
+            Value::Function(value) => allocator.deref(*value).format(f, allocator),
+            Value::Instance(value) => allocator.deref(*value).format(f, allocator),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => write!(f, "{}", value),
-            Value::String(value) => write!(f, "{:?}", value),
+            Value::String(value) => allocator.deref(*value).format(f, allocator),
         }
+    }
+    fn size(&self) -> usize {
+        0
+    }
+    fn trace(&self, allocator: &mut Allocator) {
+        match self {
+            Value::BoundMethod(value) => allocator.mark_object(*value),
+            Value::Class(value) => allocator.mark_object(*value),
+            Value::Closure(value) => allocator.mark_object(*value),
+            Value::Function(value) => allocator.mark_object(*value),
+            Value::Instance(value) => allocator.mark_object(*value),
+            Value::String(value) => allocator.mark_object(*value),
+            _ => ()
+        }
+    }
+    fn as_any(&self) -> &dyn Any {
+        panic!("Value should not be allocated")
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        panic!("Value should not be allocated")
     }
 }
 

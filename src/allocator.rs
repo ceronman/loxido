@@ -10,13 +10,36 @@ use crate::{
 };
 
 pub trait Trace {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result;
     fn size(&self) -> usize;
     fn trace(&self, allocator: &mut Allocator);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
+pub struct TraceFormatter<'allocator, T: Trace> {
+    allocator: &'allocator Allocator,
+    object: T
+}
+
+impl<'allocator, T: Trace> TraceFormatter<'allocator, T> {
+    pub fn new(object: T, allocator: &'allocator Allocator) -> Self {
+        TraceFormatter {
+            object,
+            allocator
+        }
+    }
+}
+
+impl<'allocator, T: Trace> fmt::Display for TraceFormatter<'allocator, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.object.format(f, self.allocator)
+    }
+}
 
 impl Trace for String {
+    fn format(&self, f: &mut fmt::Formatter, _allocator: &Allocator) -> fmt::Result {
+        write!(f, "{}", self)
+    }
     fn size(&self) -> usize {
         mem::size_of::<String>() + self.as_bytes().len()
     }
@@ -30,6 +53,9 @@ impl Trace for String {
 }
 
 impl Trace for ObjUpvalue {
+    fn format(&self, f: &mut fmt::Formatter, _allocator: &Allocator) -> fmt::Result {
+        write!(f, "upvalue")
+    }
     fn size(&self) -> usize {
         mem::size_of::<ObjUpvalue>()
     }
@@ -47,6 +73,14 @@ impl Trace for ObjUpvalue {
 }
 
 impl Trace for LoxFunction {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+        let name = allocator.deref(self.name);
+        if name.is_empty() {
+            write!(f, "<script>")
+        } else {
+            write!(f, "<fn {}>", name)
+        }
+    }
     fn size(&self) -> usize {
         mem::size_of::<LoxFunction>()
             + self.upvalues.capacity() * mem::size_of::<Upvalue>()
@@ -69,6 +103,10 @@ impl Trace for LoxFunction {
 }
 
 impl Trace for Closure {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+        let function = allocator.deref(self.function);
+        function.format(f, allocator)
+    }
     fn size(&self) -> usize {
         mem::size_of::<Closure>()
             + self.upvalues.capacity() * mem::size_of::<Reference<ObjUpvalue>>()
@@ -88,6 +126,9 @@ impl Trace for Closure {
 }
 
 impl Trace for Empty {
+    fn format(&self, f: &mut fmt::Formatter, _allocator: &Allocator) -> fmt::Result {
+        write!(f, "<empty>")
+    }
     fn size(&self) -> usize {
         0
     }
@@ -100,6 +141,7 @@ impl Trace for Empty {
     }
 }
 
+// TODO: Make T: Trace?
 pub struct Reference<T> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
@@ -306,12 +348,7 @@ impl Allocator {
     }
 
     pub fn mark_value(&mut self, value: Value) {
-        match value {
-            Value::String(r) => self.mark_object(r),
-            Value::Closure(r) => self.mark_object(r),
-            Value::Function(r) => self.mark_object(r),
-            _ => (),
-        }
+        value.trace(self);
     }
 
     pub fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {

@@ -2,7 +2,7 @@ use cpu_time::ProcessTime;
 use fmt::Debug;
 
 use crate::{
-    allocator::{Allocator, Reference, Trace},
+    allocator::{Allocator, Reference, Trace, TraceFormatter},
     chunk::{Chunk, Instruction, Table, Value},
     class::{BoundMethod, Instance, LoxClass},
     closure::Closure,
@@ -44,12 +44,9 @@ fn clock(_allocator: &Allocator, _args: &[Value]) -> Value {
 fn lox_panic(allocator: &Allocator, args: &[Value]) -> Value {
     let mut terms: Vec<String> = vec![];
 
-    for arg in args.iter() {
-        let term = if let Value::String(s) = *arg {
-            format!("{}", allocator.deref(s))
-        } else {
-            format!("{}", arg)
-        };
+    for &arg in args.iter() {
+        let formatter = TraceFormatter::new(arg, allocator);
+        let term = format!("{}", formatter);
         terms.push(term);
     }
 
@@ -354,11 +351,8 @@ impl Vm {
                 }
                 Instruction::Print => {
                     let value = self.pop();
-                    if let Value::String(s) = value {
-                        println!("{}", self.allocator.deref(s))
-                    } else {
-                        println!("{}", value);
-                    }
+                    let formatter = TraceFormatter::new(value, &self.allocator);
+                    println!("{}", formatter);
                 }
                 Instruction::Return => {
                     let frame = self.frames.pop().unwrap();

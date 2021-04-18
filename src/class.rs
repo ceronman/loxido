@@ -1,4 +1,4 @@
-use std::{any::Any, mem};
+use std::{any::Any, fmt, mem};
 
 use crate::{
     allocator::{Allocator, Reference, Trace},
@@ -22,6 +22,10 @@ impl LoxClass {
 }
 
 impl Trace for LoxClass {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+        let name = allocator.deref(self.name);
+        write!(f, "{}", name)
+    }
     fn size(&self) -> usize {
         mem::size_of::<LoxClass>()
     }
@@ -62,6 +66,11 @@ impl Instance {
 }
 
 impl Trace for Instance {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+        let class = allocator.deref(self.class);
+        let name = allocator.deref(class.name);
+        write!(f, "{} instance", name)
+    }
     fn size(&self) -> usize {
         mem::size_of::<Instance>()
             + self.fields.capacity()
@@ -92,6 +101,10 @@ impl BoundMethod {
 }
 
 impl Trace for BoundMethod {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+        let method = allocator.deref(self.method);
+        method.format(f, allocator)
+    }
     fn size(&self) -> usize {
         mem::size_of::<BoundMethod>()
     }
