@@ -1,10 +1,6 @@
 use std::fmt;
 
-use crate::{
-    allocator::{Allocator, Reference},
-    chunk::Chunk,
-    chunk::Value,
-};
+use crate::{allocator::{Reference}, chunk::Chunk, chunk::Value, vm::Vm};
 
 // TODO: Move this to compiler?
 #[derive(Clone, Copy)]
@@ -16,7 +12,7 @@ pub enum FunctionType {
 }
 
 #[derive(Clone, Copy)]
-pub struct NativeFn(pub fn(&Allocator, &[Value]) -> Value);
+pub struct NativeFn(pub fn(&Vm, &[Value]) -> Value);
 
 impl fmt::Debug for NativeFn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

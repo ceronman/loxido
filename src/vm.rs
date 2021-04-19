@@ -33,19 +33,17 @@ impl CallFrame {
 const MAX_FRAMES: usize = 64;
 const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
 
-lazy_static! {
-    static ref BEGIN_OF_PROGRAM: ProcessTime = ProcessTime::now();
+
+fn clock(vm: &Vm, _args: &[Value]) -> Value {
+    let time = vm.start_time.elapsed().as_secs_f64();
+    Value::Number(time)
 }
 
-fn clock(_allocator: &Allocator, _args: &[Value]) -> Value {
-    Value::Number(BEGIN_OF_PROGRAM.elapsed().as_secs_f64())
-}
-
-fn lox_panic(allocator: &Allocator, args: &[Value]) -> Value {
+fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
     let mut terms: Vec<String> = vec![];
 
     for &arg in args.iter() {
-        let formatter = TraceFormatter::new(arg, allocator);
+        let formatter = TraceFormatter::new(arg, &vm.allocator);
         let term = format!("{}", formatter);
         terms.push(term);
     }
@@ -54,6 +52,7 @@ fn lox_panic(allocator: &Allocator, args: &[Value]) -> Value {
 }
 
 pub struct Vm {
+    start_time: ProcessTime,
     allocator: Allocator,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
@@ -68,6 +67,7 @@ impl Vm {
         let init_string = allocator.intern("init".to_owned());
 
         let mut vm = Self {
+            start_time: ProcessTime::now(),
             allocator,
             frames: Vec::with_capacity(MAX_FRAMES),
             stack: Vec::with_capacity(STACK_SIZE),
@@ -454,7 +454,7 @@ impl Vm {
             Value::Closure(cid) => self.call(cid, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count as usize;
-                let result = native.0(&self.allocator, &self.stack[left..]);
+                let result = native.0(&self, &self.stack[left..]);
                 self.stack
                     .truncate(self.stack.len() - arg_count as usize - 1);
                 self.push(result);
