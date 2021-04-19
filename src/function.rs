@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{allocator::{Reference}, chunk::Chunk, chunk::Value, vm::Vm};
+use crate::{allocator::Reference, chunk::Chunk, chunk::Value, vm::Vm};
 
 // TODO: Move this to compiler?
 #[derive(Clone, Copy)]

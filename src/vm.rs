@@ -13,67 +13,32 @@ use crate::{
 };
 use std::fmt;
 
-pub struct CallFrame {
-    pub closure: Reference<Closure>,
-    ip: usize,
-    slot: usize,
-}
-
-impl CallFrame {
-    fn new(closure: Reference<Closure>) -> Self {
-        CallFrame {
-            closure,
-            ip: 0,
-            slot: 0,
-        }
-    }
-}
-
-// TODO: Maybe move constants to struct impl
-const MAX_FRAMES: usize = 64;
-const STACK_SIZE: usize = MAX_FRAMES * (std::u8::MAX as usize) + 1;
-
-
-fn clock(vm: &Vm, _args: &[Value]) -> Value {
-    let time = vm.start_time.elapsed().as_secs_f64();
-    Value::Number(time)
-}
-
-fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
-    let mut terms: Vec<String> = vec![];
-
-    for &arg in args.iter() {
-        let formatter = TraceFormatter::new(arg, &vm.allocator);
-        let term = format!("{}", formatter);
-        terms.push(term);
-    }
-
-    panic!("panic: {}", terms.join(", "))
-}
-
 pub struct Vm {
-    start_time: ProcessTime,
     allocator: Allocator,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: Table,
     open_upvalues: Vec<Reference<ObjUpvalue>>,
     init_string: Reference<String>,
+    start_time: ProcessTime,
 }
 
 impl Vm {
+    const MAX_FRAMES: usize = 64;
+    const STACK_SIZE: usize = Vm::MAX_FRAMES * (std::u8::MAX as usize) + 1;
+
     pub fn new() -> Self {
         let mut allocator = Allocator::new();
         let init_string = allocator.intern("init".to_owned());
 
         let mut vm = Self {
-            start_time: ProcessTime::now(),
             allocator,
-            frames: Vec::with_capacity(MAX_FRAMES),
-            stack: Vec::with_capacity(STACK_SIZE),
+            frames: Vec::with_capacity(Vm::MAX_FRAMES),
+            stack: Vec::with_capacity(Vm::STACK_SIZE),
             globals: Table::new(),
-            open_upvalues: Vec::with_capacity(STACK_SIZE),
+            open_upvalues: Vec::with_capacity(Vm::STACK_SIZE),
             init_string,
+            start_time: ProcessTime::now(),
         };
         vm.define_native("clock", NativeFn(clock));
         vm.define_native("panic", NativeFn(lox_panic));
@@ -88,27 +53,23 @@ impl Vm {
         self.stack.pop().expect("Empty stack")
     }
 
-    // FIXME: Ensure this is used in all the right places
     fn peek(&self, n: usize) -> Value {
         let size = self.stack.len();
         self.stack[size - 1 - n]
     }
 
     fn define_native(&mut self, name: &str, native: NativeFn) {
-        let name_id = self.allocator.intern(name.to_owned());
-        self.globals.insert(name_id, Value::NativeFunction(native));
+        let name = self.allocator.intern(name.to_owned());
+        self.globals.insert(name, Value::NativeFunction(native));
     }
 
-    // TODO: Maybe return Err(RuntimeError) directly?
-    fn runtime_error(&self, msg: &str) -> LoxError {
+    fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
         let frame = self.current_frame();
         eprintln!("{}", msg);
-        let closure = self.allocator.deref(frame.closure);
-        let function = self.allocator.deref(closure.function);
-        let chunk = &function.chunk;
+        let chunk = self.current_chunk();
         let line = chunk.lines[frame.ip - 1];
         eprintln!("[line {}] in script", line);
-        LoxError::RuntimeError
+        Err(LoxError::RuntimeError)
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
@@ -120,7 +81,7 @@ impl Vm {
         self.run()
     }
 
-    // TODO: Investigate macros for this
+    // PERF: Investigate macros for this
     fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, r: fn(T) -> Value) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
@@ -128,10 +89,12 @@ impl Vm {
                 self.push(r(f(value_a, value_b)));
                 Ok(())
             }
-            _ => Err(self.runtime_error("Operands must be numbers.")),
+            _ => return self.runtime_error("Operands must be numbers."),
         }
     }
 
+    // PERF: Investigate making frames fixed array.
+    // PERF: Investigate making CallFrame Copy
     fn current_frame(&self) -> &CallFrame {
         self.frames.last().unwrap()
     }
@@ -140,10 +103,18 @@ impl Vm {
         self.frames.last_mut().unwrap()
     }
 
+    // PERF: Investigate unsafe
     fn current_chunk(&self) -> &Chunk {
-        let closure = self.allocator.deref(self.current_frame().closure);
+        let closure = self.current_closure();
         let function = self.allocator.deref(closure.function);
         &function.chunk
+    }
+
+    // PERF: Investigate unsafe
+    fn current_closure(&self) -> &Closure {
+        let closure = self.current_frame().closure;
+        let closure = self.allocator.deref(closure);
+        &closure
     }
 
     fn run(&mut self) -> Result<(), LoxError> {
@@ -167,76 +138,72 @@ impl Vm {
                 Instruction::Add => {
                     let (b, a) = (self.pop(), self.pop());
                     match (&a, &b) {
-                        (Value::Number(value_a), Value::Number(value_b)) => {
-                            self.push(Value::Number(value_a + value_b));
+                        (Value::Number(a), Value::Number(b)) => {
+                            self.push(Value::Number(a + b));
                         }
 
-                        (Value::String(value_a), Value::String(value_b)) => {
-                            let s_a = self.allocator.deref(*value_a);
-                            let s_b = self.allocator.deref(*value_b);
-                            let result = format!("{}{}", s_a, s_b);
-                            let s = self.intern(result);
-                            let value = Value::String(s);
+                        (Value::String(a), Value::String(b)) => {
+                            let a = self.allocator.deref(*a);
+                            let b = self.allocator.deref(*b);
+                            let result = format!("{}{}", a, b);
+                            let result = self.intern(result);
+                            let value = Value::String(result);
                             self.push(value);
                         }
 
                         _ => {
                             self.push(a);
                             self.push(b);
-                            return Err(
-                                self.runtime_error("Operands must be two numbers or two strings.")
-                            );
+                            return self
+                                .runtime_error("Operands must be two numbers or two strings.");
                         }
                     }
                 }
-                Instruction::Class(index) => {
-                    let s = self.current_chunk().read_string(index);
-                    let cls = LoxClass::new(s);
-                    let cls = self.alloc(cls);
-                    self.push(Value::Class(cls));
+                Instruction::Class(constant) => {
+                    let class_name = self.current_chunk().read_string(constant);
+                    let class = LoxClass::new(class_name);
+                    let class = self.alloc(class);
+                    self.push(Value::Class(class));
                 }
                 Instruction::CloseUpvalue => {
                     let stack_top = self.stack.len() - 1;
                     self.close_upvalues(stack_top);
                     self.pop();
                 }
-                Instruction::Closure(index) => {
-                    let c = self.current_chunk().read_constant(index);
-                    if let Value::Function(function_id) = c {
-                        let upvalue_count = self.allocator.deref(function_id).upvalues.len();
-                        let mut new_closure = Closure::new(function_id);
+                Instruction::Closure(constant) => {
+                    let function = self.current_chunk().read_constant(constant);
+                    if let Value::Function(function) = function {
+                        let upvalue_count = self.allocator.deref(function).upvalues.len();
+                        let mut closure = Closure::new(function);
 
                         for i in 0..upvalue_count {
-                            let upvalue = self.allocator.deref(function_id).upvalues[i];
+                            let upvalue = self.allocator.deref(function).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
-                                // TODO: unify u8 vs usize everywhere
-                                self.capture_upvalue(
-                                    self.current_frame().slot + upvalue.index as usize,
-                                )
+                                let location = self.current_frame().slot + upvalue.index as usize;
+                                self.capture_upvalue(location)
                             } else {
-                                let current_closure =
-                                    self.allocator.deref(self.current_frame().closure);
-                                current_closure.upvalues[upvalue.index as usize]
+                                self.current_closure().upvalues[upvalue.index as usize]
                             };
-                            new_closure.upvalues.push(obj_upvalue)
+                            closure.upvalues.push(obj_upvalue)
                         }
 
-                        let closure_id = self.alloc(new_closure);
-                        self.push(Value::Closure(closure_id));
-                    } // TODO error if not function.
+                        let closure = self.alloc(closure);
+                        self.push(Value::Closure(closure));
+                    } else {
+                        panic!("Closure instruction without function value");
+                    }
                 }
                 Instruction::Call(arg_count) => {
-                    // TODO: Unify duplicated functionality also in return
                     self.call_value(arg_count)?;
                 }
-                Instruction::Constant(index) => {
-                    let value = self.current_chunk().read_constant(index);
+                Instruction::Constant(constant) => {
+                    let value = self.current_chunk().read_constant(constant);
                     self.push(value);
                 }
-                Instruction::DefineGlobal(index) => {
-                    let s = self.current_chunk().read_string(index);
+                Instruction::DefineGlobal(constant) => {
+                    let global_name = self.current_chunk().read_string(constant);
                     let value = self.pop();
-                    self.globals.insert(s, value);
+                    self.globals.insert(global_name, value);
                 }
                 Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
                 Instruction::Equal => {
@@ -245,14 +212,14 @@ impl Vm {
                     self.push(Value::Bool(a == b));
                 }
                 Instruction::False => self.push(Value::Bool(false)),
-                Instruction::GetGlobal(index) => {
-                    let s = self.current_chunk().read_string(index);
-                    match self.globals.get(&s) {
+                Instruction::GetGlobal(constant) => {
+                    let global_name = self.current_chunk().read_string(constant);
+                    match self.globals.get(&global_name) {
                         Some(&value) => self.push(value),
                         None => {
-                            let name = self.allocator.deref(s);
-                            let msg = format!("Undefined variable '{}'.", name);
-                            return Err(self.runtime_error(&msg));
+                            let global_name = self.allocator.deref(global_name);
+                            let msg = format!("Undefined variable '{}'.", global_name);
+                            return self.runtime_error(&msg);
                         }
                     }
                 }
@@ -261,38 +228,37 @@ impl Vm {
                     let value = self.stack[i];
                     self.push(value);
                 }
-                Instruction::GetProperty(slot) => {
+                Instruction::GetProperty(constant) => {
                     if let Value::Instance(instance) = self.peek(0) {
                         let instance = self.allocator.deref(instance);
                         let class = instance.class;
-                        let name = self.current_chunk().read_string(slot);
-                        let value = instance.get_property(name);
+                        let property_name = self.current_chunk().read_string(constant);
+                        let value = instance.get_property(property_name);
                         match value {
                             Some(value) => {
                                 self.pop();
                                 self.push(value);
                             }
                             None => {
-                                self.bind_method(class, name)?;
+                                self.bind_method(class, property_name)?;
                             }
                         }
                     } else {
-                        return Err(self.runtime_error("Only instances have properties."));
+                        return self.runtime_error("Only instances have properties.");
                     }
                 }
-                Instruction::GetSuper(slot) => {
-                    let name = self.current_chunk().read_string(slot);
+                Instruction::GetSuper(constant) => {
+                    let method_name = self.current_chunk().read_string(constant);
                     if let Value::Class(superclass) = self.pop() {
-                        self.bind_method(superclass, name)?
+                        self.bind_method(superclass, method_name)?
                     } else {
                         panic!("super found no class");
                     }
                 }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
-                        let current_closure = self.allocator.deref(self.current_frame().closure);
-                        let upvalue_ref = current_closure.upvalues[slot as usize];
-                        let upvalue = self.allocator.deref(upvalue_ref);
+                        let upvalue = self.current_closure().upvalues[slot as usize];
+                        let upvalue = self.allocator.deref(upvalue);
                         if let Some(value) = upvalue.closed {
                             value
                         } else {
@@ -311,11 +277,11 @@ impl Vm {
                         subclass.methods = methods;
                         self.pop();
                     } else {
-                        return Err(self.runtime_error("Superclass must be a class."));
+                        return self.runtime_error("Superclass must be a class.");
                     }
                 }
-                Instruction::Invoke((index, arg_count)) => {
-                    let name = self.current_chunk().read_string(index);
+                Instruction::Invoke((constant, arg_count)) => {
+                    let name = self.current_chunk().read_string(constant);
                     self.invoke(name, arg_count)?;
                 }
                 Instruction::Jump(offset) => {
@@ -330,9 +296,9 @@ impl Vm {
                 Instruction::Loop(offset) => {
                     self.current_frame_mut().ip -= offset as usize + 1;
                 }
-                Instruction::Method(slot) => {
-                    let name = self.current_chunk().read_string(slot);
-                    self.define_method(name);
+                Instruction::Method(constant) => {
+                    let method_name = self.current_chunk().read_string(constant);
+                    self.define_method(method_name);
                 }
                 Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
                 Instruction::Negate => {
@@ -340,7 +306,7 @@ impl Vm {
                         self.pop();
                         self.push(Value::Number(-value));
                     } else {
-                        return Err(self.runtime_error("Operand must be a number."));
+                        return self.runtime_error("Operand must be a number.");
                     }
                 }
                 Instruction::Nil => self.push(Value::Nil),
@@ -358,25 +324,24 @@ impl Vm {
                 }
                 Instruction::Return => {
                     let frame = self.frames.pop().unwrap();
-                    let value = self.pop();
+                    let return_value = self.pop();
                     self.close_upvalues(frame.slot);
 
                     if self.frames.is_empty() {
                         return Ok(());
                     } else {
                         self.stack.truncate(frame.slot);
-                        self.push(value);
+                        self.push(return_value);
                     }
                 }
-                Instruction::SetGlobal(index) => {
-                    // TODO: refactor long indirection?
-                    let name = self.current_chunk().read_string(index);
+                Instruction::SetGlobal(constant) => {
+                    let global_name = self.current_chunk().read_string(constant);
                     let value = self.peek(0);
-                    if let None = self.globals.insert(name, value) {
-                        self.globals.remove(&name);
-                        let s = self.allocator.deref(name);
+                    if let None = self.globals.insert(global_name, value) {
+                        self.globals.remove(&global_name);
+                        let s = self.allocator.deref(global_name);
                         let msg = format!("Undefined variable '{}'.", s);
-                        return Err(self.runtime_error(&msg));
+                        return self.runtime_error(&msg);
                     }
                 }
                 Instruction::SetLocal(slot) => {
@@ -384,24 +349,22 @@ impl Vm {
                     let value = self.peek(0);
                     self.stack[i] = value;
                 }
-                Instruction::SetProperty(slot) => {
+                Instruction::SetProperty(constant) => {
                     if let Value::Instance(instance) = self.peek(1) {
-                        let name = self.current_chunk().read_string(slot);
+                        let property_name = self.current_chunk().read_string(constant);
                         let value = self.pop();
                         let instance = self.allocator.deref_mut(instance);
-                        instance.set_property(name, value);
+                        instance.set_property(property_name, value);
                         self.pop();
                         self.push(value);
                     } else {
-                        return Err(self.runtime_error("Only instances have fields."));
+                        return self.runtime_error("Only instances have fields.");
                     }
                 }
                 Instruction::SetUpvalue(slot) => {
-                    // TODO: current_closure dance is repeated a lot.
-                    let current_closure = self.allocator.deref(self.current_frame().closure);
-                    let upvalue_ref = current_closure.upvalues[slot as usize];
+                    let upvalue = self.current_closure().upvalues[slot as usize];
                     let value = self.peek(0);
-                    let mut upvalue = self.allocator.deref_mut(upvalue_ref);
+                    let mut upvalue = self.allocator.deref_mut(upvalue);
                     if let None = upvalue.closed {
                         self.stack[upvalue.location] = value;
                     } else {
@@ -409,8 +372,8 @@ impl Vm {
                     }
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
-                Instruction::SuperInvoke((index, arg_count)) => {
-                    let method_name = self.current_chunk().read_string(index);
+                Instruction::SuperInvoke((constant, arg_count)) => {
+                    let method_name = self.current_chunk().read_string(constant);
                     if let Value::Class(class) = self.pop() {
                         self.invoke_from_class(class, method_name, arg_count)?;
                     } else {
@@ -444,10 +407,10 @@ impl Vm {
                     if let Value::Closure(initializer) = initializer {
                         return self.call(initializer, arg_count);
                     }
-                    return Err(self.runtime_error("Initializer is not closure"));
+                    return self.runtime_error("Initializer is not closure");
                 } else if arg_count != 0 {
                     let msg = format!("Expected 0 arguments but got {}.", arg_count);
-                    return Err(self.runtime_error(&msg));
+                    return self.runtime_error(&msg);
                 }
                 Ok(())
             }
@@ -460,7 +423,7 @@ impl Vm {
                 self.push(result);
                 Ok(())
             }
-            _ => Err(self.runtime_error("Can only call functions and classes.")),
+            _ => self.runtime_error("Can only call functions and classes."),
         }
     }
 
@@ -478,7 +441,7 @@ impl Vm {
                 self.invoke_from_class(class, name, arg_count)
             }
         } else {
-            Err(self.runtime_error("Only instances have methods."))
+            self.runtime_error("Only instances have methods.")
         }
     }
 
@@ -498,7 +461,7 @@ impl Vm {
         } else {
             let name = self.allocator.deref(name);
             let msg = format!("Undefined property '{}'.", name);
-            Err(self.runtime_error(&msg))
+            self.runtime_error(&msg)
         }
     }
 
@@ -522,7 +485,7 @@ impl Vm {
         } else {
             let name = self.allocator.deref(name);
             let msg = format!("Undefined property '{}'.", name);
-            Err(self.runtime_error(&msg))
+            self.runtime_error(&msg)
         }
     }
 
@@ -571,9 +534,9 @@ impl Vm {
         let f = self.allocator.deref(closure.function);
         if (arg_count as usize) != f.arity {
             let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
-            Err(self.runtime_error(&msg))
-        } else if self.frames.len() == MAX_FRAMES {
-            Err(self.runtime_error("Stack overflow."))
+            self.runtime_error(&msg)
+        } else if self.frames.len() == Vm::MAX_FRAMES {
+            self.runtime_error("Stack overflow.")
         } else {
             // TODO this looks cleaner with a constructor
             let mut frame = CallFrame::new(closure_id);
@@ -623,4 +586,37 @@ impl Vm {
         self.allocator.mark_table(&self.globals);
         self.allocator.mark_object(self.init_string);
     }
+}
+
+pub struct CallFrame {
+    closure: Reference<Closure>,
+    ip: usize,
+    slot: usize,
+}
+
+impl CallFrame {
+    fn new(closure: Reference<Closure>) -> Self {
+        CallFrame {
+            closure,
+            ip: 0,
+            slot: 0,
+        }
+    }
+}
+
+fn clock(vm: &Vm, _args: &[Value]) -> Value {
+    let time = vm.start_time.elapsed().as_secs_f64();
+    Value::Number(time)
+}
+
+fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
+    let mut terms: Vec<String> = vec![];
+
+    for &arg in args.iter() {
+        let formatter = TraceFormatter::new(arg, &vm.allocator);
+        let term = format!("{}", formatter);
+        terms.push(term);
+    }
+
+    panic!("panic: {}", terms.join(", "))
 }
