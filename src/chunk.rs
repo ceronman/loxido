@@ -44,7 +44,7 @@ impl Trace for Value {
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => {
                 // Hack to be able to print -0.0 as -0. Check https://github.com/rust-lang/rfcs/issues/1074
-                if *value == 0.0 && value.signum() == -1.0 {
+                if *value == 0.0f64 && value.is_sign_negative() {
                     write!(f, "-{}", value)
                 } else {
                     write!(f, "{}", value)
@@ -137,7 +137,7 @@ impl Chunk {
     }
 
     pub fn read_constant(&self, index: u8) -> Value {
-        self.constants[index as usize].clone()
+        self.constants[index as usize]
     }
 
     pub fn read_string(&self, index: u8) -> Reference<String> {

@@ -141,7 +141,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn is_at_end(&self) -> bool {
-        return self.current == self.code.len();
+        self.current == self.code.len()
     }
 
     fn lexeme(&self) -> &'a str {
@@ -186,9 +186,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn matches(&mut self, expected: u8) -> bool {
-        if self.is_at_end() {
-            false
-        } else if self.peek() != expected {
+        if self.is_at_end() || self.peek() != expected {
             false
         } else {
             self.current += 1;
@@ -263,9 +261,9 @@ impl<'a> Scanner<'a> {
 }
 
 fn is_digit(c: u8) -> bool {
-    c >= b'0' && c <= b'9'
+    c.is_ascii_digit()
 }
 
 fn is_alpha(c: u8) -> bool {
-    (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
+    c.is_ascii_alphabetic() || c == b'_'
 }

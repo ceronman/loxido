@@ -23,7 +23,7 @@ fn repl(vm: &mut Vm) {
         io::stdin()
             .read_line(&mut line)
             .expect("Unable to read line from the REPL");
-        if line.len() == 0 {
+        if line.is_empty() {
             break;
         }
         vm.interpret(&line).ok();

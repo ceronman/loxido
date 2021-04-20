@@ -153,7 +153,7 @@ impl<'a> Compiler<'a> {
 
         let upvalue = Upvalue { index, is_local };
         self.function.upvalues.push(upvalue);
-        return count as u8;
+        count as u8
     }
 }
 
@@ -727,7 +727,7 @@ impl<'a> Parser<'a> {
     }
 
     fn this(&mut self, _can_assign: bool) {
-        if let None = self.class_compiler {
+        if self.class_compiler.is_none() {
             self.error("Can't use 'this' outside of a class.");
             return;
         }
@@ -760,22 +760,16 @@ impl<'a> Parser<'a> {
     // TODO: resolve_local and resolve_upvalue are pretty much the same
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
         let result = self.compiler.resolve_local(name);
-        loop {
-            match self.compiler.errors.pop() {
-                Some(error) => self.error(error),
-                None => break,
-            }
+        while let Some(error) = self.compiler.errors.pop() {
+            self.error(error);
         }
         result
     }
 
     fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
         let result = self.compiler.resolve_upvalue(name);
-        loop {
-            match self.compiler.errors.pop() {
-                Some(error) => self.error(error),
-                None => break,
-            }
+        while let Some(error) = self.compiler.errors.pop() {
+            self.error(error);
         }
         result
     }
@@ -1090,14 +1084,13 @@ impl<'a> Parser<'a> {
 
     fn make_constant(&mut self, value: Value) -> u8 {
         let index = self.compiler.function.chunk.add_constant(value);
-        let index = match u8::try_from(index) {
+        match u8::try_from(index) {
             Ok(index) => index,
             Err(_) => {
                 self.error("Too many constants in one chunk.");
                 0
             }
-        };
-        index
+        }
     }
 
     fn emit_constant(&mut self, value: Value) {

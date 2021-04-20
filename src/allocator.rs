@@ -244,7 +244,7 @@ impl Allocator {
         self.bytes_allocated += size;
         let entry = ObjHeader {
             is_marked: false,
-            size: size,
+            size,
             obj: Box::new(object),
         };
         let index = match self.free_slots.pop() {
@@ -266,11 +266,10 @@ impl Allocator {
             self.bytes_allocated,
             self.next_gc,
         );
-        let reference = Reference {
+        Reference {
             index,
             _marker: PhantomData,
-        };
-        reference
+        }
     }
 
     pub fn intern(&mut self, name: String) -> Reference<String> {
@@ -383,7 +382,12 @@ impl Allocator {
 
     fn sweep(&mut self) {
         for i in 0..self.objects.len() {
-            if let Some(_) = self.objects[i].obj.as_any().downcast_ref::<Empty>() {
+            if self.objects[i]
+                .obj
+                .as_any()
+                .downcast_ref::<Empty>()
+                .is_some()
+            {
                 continue;
             }
             if self.objects[i].is_marked {

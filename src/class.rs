@@ -57,7 +57,7 @@ impl Instance {
 
     // TODO: Move these to Table
     pub fn get_property(&self, name: Reference<String>) -> Option<Value> {
-        self.fields.get(&name).map(|&v| v)
+        self.fields.get(&name).copied()
     }
 
     pub fn set_property(&mut self, name: Reference<String>, value: Value) {

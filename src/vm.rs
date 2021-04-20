@@ -89,7 +89,7 @@ impl Vm {
                 self.push(r(f(value_a, value_b)));
                 Ok(())
             }
-            _ => return self.runtime_error("Operands must be numbers."),
+            _ => self.runtime_error("Operands must be numbers."),
         }
     }
 
@@ -126,7 +126,7 @@ impl Vm {
                 for value in self.stack.iter() {
                     print!("[{}]", value);
                 }
-                println!("");
+                println!();
 
                 self.current_chunk()
                     .disassemble_instruction(&instruction, self.current_frame().ip);
@@ -205,7 +205,7 @@ impl Vm {
                     let value = self.pop();
                     self.globals.insert(global_name, value);
                 }
-                Instruction::Divide => self.binary_op(|a, b| a / b, |n| Value::Number(n))?,
+                Instruction::Divide => self.binary_op(|a, b| a / b, Value::Number)?,
                 Instruction::Equal => {
                     let a = self.pop();
                     let b = self.pop();
@@ -267,7 +267,7 @@ impl Vm {
                     };
                     self.push(value);
                 }
-                Instruction::Greater => self.binary_op(|a, b| a > b, |n| Value::Bool(n))?,
+                Instruction::Greater => self.binary_op(|a, b| a > b, Value::Bool)?,
                 Instruction::Inherit => {
                     let pair = (self.peek(0), self.peek(1));
                     if let (Value::Class(subclass), Value::Class(superclass)) = pair {
@@ -292,7 +292,7 @@ impl Vm {
                         self.current_frame_mut().ip += offset as usize;
                     }
                 }
-                Instruction::Less => self.binary_op(|a, b| a < b, |n| Value::Bool(n))?,
+                Instruction::Less => self.binary_op(|a, b| a < b, Value::Bool)?,
                 Instruction::Loop(offset) => {
                     self.current_frame_mut().ip -= offset as usize + 1;
                 }
@@ -300,7 +300,7 @@ impl Vm {
                     let method_name = self.current_chunk().read_string(constant);
                     self.define_method(method_name);
                 }
-                Instruction::Multiply => self.binary_op(|a, b| a * b, |n| Value::Number(n))?,
+                Instruction::Multiply => self.binary_op(|a, b| a * b, Value::Number)?,
                 Instruction::Negate => {
                     if let Value::Number(value) = self.peek(0) {
                         self.pop();
@@ -337,7 +337,7 @@ impl Vm {
                 Instruction::SetGlobal(constant) => {
                     let global_name = self.current_chunk().read_string(constant);
                     let value = self.peek(0);
-                    if let None = self.globals.insert(global_name, value) {
+                    if self.globals.insert(global_name, value).is_none() {
                         self.globals.remove(&global_name);
                         let s = self.allocator.deref(global_name);
                         let msg = format!("Undefined variable '{}'.", s);
@@ -365,13 +365,13 @@ impl Vm {
                     let upvalue = self.current_closure().upvalues[slot as usize];
                     let value = self.peek(0);
                     let mut upvalue = self.allocator.deref_mut(upvalue);
-                    if let None = upvalue.closed {
+                    if upvalue.closed.is_none() {
                         self.stack[upvalue.location] = value;
                     } else {
                         upvalue.closed = Some(value);
                     }
                 }
-                Instruction::Substract => self.binary_op(|a, b| a - b, |n| Value::Number(n))?,
+                Instruction::Substract => self.binary_op(|a, b| a - b, Value::Number)?,
                 Instruction::SuperInvoke((constant, arg_count)) => {
                     let method_name = self.current_chunk().read_string(constant);
                     if let Value::Class(class) = self.pop() {
