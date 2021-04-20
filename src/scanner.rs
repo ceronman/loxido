@@ -52,14 +52,14 @@ pub enum TokenType {
 }
 
 #[derive(Copy, Clone)]
-pub struct Token<'a> {
+pub struct Token<'sourcecode> {
     pub kind: TokenType,
     pub line: usize,
-    pub lexeme: &'a str,
+    pub lexeme: &'sourcecode str,
 }
 
-impl<'a> Token<'a> {
-    pub fn synthetic(text: &'a str) -> Token<'a> {
+impl<'sourcecode> Token<'sourcecode> {
+    pub fn synthetic(text: &'sourcecode str) -> Token<'sourcecode> {
         Token {
             kind: TokenType::Error,
             lexeme: text,
@@ -68,17 +68,16 @@ impl<'a> Token<'a> {
     }
 }
 
-pub struct Scanner<'a> {
+pub struct Scanner<'sourcecode> {
     keywords: HashMap<&'static str, TokenType>,
-    code: &'a str,
+    code: &'sourcecode str,
     start: usize,
     current: usize,
     line: usize,
 }
 
-impl<'a> Scanner<'a> {
-    pub fn new(code: &'a str) -> Scanner {
-        // TODO: consider making this a lazy static
+impl<'sourcecode> Scanner<'sourcecode> {
+    pub fn new(code: &'sourcecode str) -> Scanner {
         let mut keywords = HashMap::with_capacity(16);
         keywords.insert("and", TokenType::And);
         keywords.insert("class", TokenType::Class);
@@ -106,7 +105,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Token<'a> {
+    pub fn scan_token(&mut self) -> Token<'sourcecode> {
         self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
@@ -144,11 +143,11 @@ impl<'a> Scanner<'a> {
         self.current == self.code.len()
     }
 
-    fn lexeme(&self) -> &'a str {
+    fn lexeme(&self) -> &'sourcecode str {
         &self.code[self.start..self.current]
     }
 
-    fn make_token(&self, kind: TokenType) -> Token<'a> {
+    fn make_token(&self, kind: TokenType) -> Token<'sourcecode> {
         Token {
             kind,
             lexeme: self.lexeme(),
@@ -214,7 +213,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn string(&mut self) -> Token<'a> {
+    fn string(&mut self) -> Token<'sourcecode> {
         while self.peek() != b'"' && !self.is_at_end() {
             if self.peek() == b'\n' {
                 self.line += 1;
@@ -230,7 +229,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn number(&mut self) -> Token<'a> {
+    fn number(&mut self) -> Token<'sourcecode> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -245,7 +244,7 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenType::Number)
     }
 
-    fn identifier(&mut self) -> Token<'a> {
+    fn identifier(&mut self) -> Token<'sourcecode> {
         while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
