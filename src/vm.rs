@@ -45,6 +45,15 @@ impl Vm {
         vm
     }
 
+    pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
+        let parser = Parser::new(code, &mut self.allocator);
+        let function = parser.compile()?;
+        self.push(Value::Function(function));
+        let closure = self.alloc(Closure::new(function));
+        self.frames.push(CallFrame::new(closure, 0));
+        self.run()
+    }
+
     fn push(&mut self, v: Value) {
         self.stack.push(v);
     }
@@ -56,6 +65,11 @@ impl Vm {
     fn peek(&self, n: usize) -> Value {
         let size = self.stack.len();
         self.stack[size - 1 - n]
+    }
+
+    fn set_at(&mut self, n: usize, value: Value) {
+        let size = self.stack.len();
+        self.stack[size - 1 - n] = value;
     }
 
     fn define_native(&mut self, name: &str, native: NativeFn) {
@@ -70,15 +84,6 @@ impl Vm {
         let line = chunk.lines[frame.ip - 1];
         eprintln!("[line {}] in script", line);
         Err(LoxError::RuntimeError)
-    }
-
-    pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.allocator);
-        let function = parser.compile()?;
-        self.push(Value::Function(function));
-        let closure = self.alloc(Closure::new(function));
-        self.frames.push(CallFrame::new(closure));
-        self.run()
     }
 
     // PERF: Investigate macros for this
@@ -194,7 +199,7 @@ impl Vm {
                     }
                 }
                 Instruction::Call(arg_count) => {
-                    self.call_value(arg_count)?;
+                    self.call_value(arg_count as usize)?;
                 }
                 Instruction::Constant(constant) => {
                     let value = self.current_chunk().read_constant(constant);
@@ -282,7 +287,7 @@ impl Vm {
                 }
                 Instruction::Invoke((constant, arg_count)) => {
                     let name = self.current_chunk().read_string(constant);
-                    self.invoke(name, arg_count)?;
+                    self.invoke(name, arg_count as usize)?;
                 }
                 Instruction::Jump(offset) => {
                     self.current_frame_mut().ip += offset as usize;
@@ -375,7 +380,7 @@ impl Vm {
                 Instruction::SuperInvoke((constant, arg_count)) => {
                     let method_name = self.current_chunk().read_string(constant);
                     if let Value::Class(class) = self.pop() {
-                        self.invoke_from_class(class, method_name, arg_count)?;
+                        self.invoke_from_class(class, method_name, arg_count as usize)?;
                     } else {
                         panic!("super invoke with no class");
                     }
@@ -384,24 +389,20 @@ impl Vm {
             };
         }
     }
-
-    // TODO change to u8 to usize?
-    fn call_value(&mut self, arg_count: u8) -> Result<(), LoxError> {
-        let callee = self.peek(arg_count as usize);
+    fn call_value(&mut self, arg_count: usize) -> Result<(), LoxError> {
+        let callee = self.peek(arg_count);
         match callee {
             Value::BoundMethod(bound) => {
                 let bound = self.allocator.deref(bound);
                 let method = bound.method;
-                // TODO: abstract this as a form of peek()
-                let stack_pos = self.stack.len() - 1 - arg_count as usize;
-                self.stack[stack_pos] = bound.receiver;
+                let receiver = bound.receiver;
+                self.set_at(arg_count, receiver);
                 self.call(method, arg_count)
             }
             Value::Class(class) => {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
-                let stack_pos = self.stack.len() - 1 - arg_count as usize;
-                self.stack[stack_pos] = Value::Instance(instance);
+                self.set_at(arg_count, Value::Instance(instance));
                 let class = self.allocator.deref(class);
                 if let Some(&initializer) = class.methods.get(&self.init_string) {
                     if let Value::Closure(initializer) = initializer {
@@ -414,12 +415,11 @@ impl Vm {
                 }
                 Ok(())
             }
-            Value::Closure(cid) => self.call(cid, arg_count),
+            Value::Closure(closure) => self.call(closure, arg_count),
             Value::NativeFunction(native) => {
-                let left = self.stack.len() - arg_count as usize;
+                let left = self.stack.len() - arg_count;
                 let result = native.0(&self, &self.stack[left..]);
-                self.stack
-                    .truncate(self.stack.len() - arg_count as usize - 1);
+                self.stack.truncate(left - 1);
                 self.push(result);
                 Ok(())
             }
@@ -427,14 +427,30 @@ impl Vm {
         }
     }
 
-    fn invoke(&mut self, name: Reference<String>, arg_count: u8) -> Result<(), LoxError> {
-        // TODO: make peek take u8?
-        let receiver = self.peek(arg_count as usize);
+    fn call(&mut self, closure_ref: Reference<Closure>, arg_count: usize) -> Result<(), LoxError> {
+        let closure = self.allocator.deref(closure_ref);
+        let function = self.allocator.deref(closure.function);
+        if arg_count != function.arity {
+            let msg = format!(
+                "Expected {} arguments but got {}.",
+                function.arity, arg_count
+            );
+            self.runtime_error(&msg)
+        } else if self.frames.len() == Vm::MAX_FRAMES {
+            self.runtime_error("Stack overflow.")
+        } else {
+            let frame = CallFrame::new(closure_ref, self.stack.len() - arg_count - 1);
+            self.frames.push(frame);
+            Ok(())
+        }
+    }
+
+    fn invoke(&mut self, name: Reference<String>, arg_count: usize) -> Result<(), LoxError> {
+        let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
             let instance = self.allocator.deref(instance);
             if let Some(field) = instance.get_property(name) {
-                let stack_pos = self.stack.len() - 1 - arg_count as usize;
-                self.stack[stack_pos] = field;
+                self.set_at(arg_count, field);
                 self.call_value(arg_count)
             } else {
                 let class = instance.class;
@@ -449,7 +465,7 @@ impl Vm {
         &mut self,
         class: Reference<LoxClass>,
         name: Reference<String>,
-        arg_count: u8,
+        arg_count: usize,
     ) -> Result<(), LoxError> {
         let class = self.allocator.deref(class);
         if let Some(&method) = class.methods.get(&name) {
@@ -490,7 +506,7 @@ impl Vm {
     }
 
     fn capture_upvalue(&mut self, location: usize) -> Reference<ObjUpvalue> {
-        for &upvalue_ref in self.open_upvalues.iter() {
+        for &upvalue_ref in &self.open_upvalues {
             let upvalue = self.allocator.deref(upvalue_ref);
             if upvalue.location == location {
                 return upvalue_ref;
@@ -507,7 +523,7 @@ impl Vm {
             let upvalue = self.open_upvalues[i];
             let upvalue = self.allocator.deref_mut(upvalue);
             if upvalue.location >= last {
-                // TODO: Might be optimization oportunities for this. Maybe deque.
+                // PERF: Remove is expensive
                 self.open_upvalues.remove(i);
                 let location = upvalue.location;
                 upvalue.closed = Some(self.stack[location]);
@@ -528,31 +544,12 @@ impl Vm {
         }
     }
 
-    fn call(&mut self, closure_id: Reference<Closure>, arg_count: u8) -> Result<(), LoxError> {
-        let closure = self.allocator.deref(closure_id);
-        // TODO: Inefficient double lookup;
-        let f = self.allocator.deref(closure.function);
-        if (arg_count as usize) != f.arity {
-            let msg = format!("Expected {} arguments but got {}.", f.arity, arg_count);
-            self.runtime_error(&msg)
-        } else if self.frames.len() == Vm::MAX_FRAMES {
-            self.runtime_error("Stack overflow.")
-        } else {
-            // TODO this looks cleaner with a constructor
-            let mut frame = CallFrame::new(closure_id);
-            frame.slot = self.stack.len() - (arg_count as usize) - 1;
-            self.frames.push(frame);
-            Ok(())
-        }
-    }
-
-    // TODO should not be public?
-    pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
+    fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
         self.mark_and_sweep();
         self.allocator.alloc(object)
     }
 
-    pub fn intern(&mut self, name: String) -> Reference<String> {
+    fn intern(&mut self, name: String) -> Reference<String> {
         self.mark_and_sweep();
         self.allocator.intern(name)
     }
@@ -588,18 +585,18 @@ impl Vm {
     }
 }
 
-pub struct CallFrame {
+struct CallFrame {
     closure: Reference<Closure>,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(closure: Reference<Closure>) -> Self {
+    fn new(closure: Reference<Closure>, slot: usize) -> Self {
         CallFrame {
             closure,
             ip: 0,
-            slot: 0,
+            slot,
         }
     }
 }
