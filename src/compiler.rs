@@ -9,7 +9,7 @@ use crate::{
 use std::collections::HashMap;
 use std::{convert::TryFrom, mem};
 
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Copy, Clone, PartialOrd, PartialEq)]
 enum Precedence {
     None,
     Assignment, // =
@@ -42,21 +42,21 @@ impl Precedence {
     }
 }
 
-type ParseFn<'a> = fn(&mut Parser<'a>, can_assing: bool) -> ();
+type ParseFn<'sourcecode> = fn(&mut Parser<'sourcecode>, can_assing: bool) -> ();
 
 #[derive(Copy, Clone)]
-struct ParseRule<'a> {
-    prefix: Option<ParseFn<'a>>,
-    infix: Option<ParseFn<'a>>,
+struct ParseRule<'sourcecode> {
+    prefix: Option<ParseFn<'sourcecode>>,
+    infix: Option<ParseFn<'sourcecode>>,
     precedence: Precedence,
 }
 
-impl<'a> ParseRule<'a> {
+impl<'sourcecode> ParseRule<'sourcecode> {
     fn new(
-        prefix: Option<ParseFn<'a>>,
-        infix: Option<ParseFn<'a>>,
+        prefix: Option<ParseFn<'sourcecode>>,
+        infix: Option<ParseFn<'sourcecode>>,
         precedence: Precedence,
-    ) -> ParseRule<'a> {
+    ) -> ParseRule<'sourcecode> {
         ParseRule {
             prefix,
             infix,
@@ -66,14 +66,14 @@ impl<'a> ParseRule<'a> {
 }
 
 #[derive(Copy, Clone)]
-struct Local<'a> {
-    name: Token<'a>,
+struct Local<'sourcecode> {
+    name: Token<'sourcecode>,
     depth: i32,
     is_captured: bool,
 }
 
-impl<'a> Local<'a> {
-    fn new(name: Token<'a>, depth: i32) -> Self {
+impl<'sourcecode> Local<'sourcecode> {
+    fn new(name: Token<'sourcecode>, depth: i32) -> Self {
         Local {
             name,
             depth,
@@ -82,25 +82,25 @@ impl<'a> Local<'a> {
     }
 }
 
-const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
-
-struct Compiler<'a> {
-    enclosing: Option<Box<Compiler<'a>>>,
+struct Compiler<'sourcecode> {
+    enclosing: Option<Box<Compiler<'sourcecode>>>,
     function: LoxFunction,
     function_type: FunctionType,
-    locals: Vec<Local<'a>>,
+    locals: Vec<Local<'sourcecode>>,
     errors: Vec<&'static str>,
     scope_depth: i32,
 }
 
-impl<'a> Compiler<'a> {
-    fn new(enclosing: Option<Box<Compiler<'a>>>, kind: FunctionType) -> Box<Self> {
+impl<'sourcecode> Compiler<'sourcecode> {
+    const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
+
+    fn new(enclosing: Option<Box<Compiler<'sourcecode>>>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
             enclosing,
             function: LoxFunction::default(),
             function_type: kind,
-            locals: Vec::with_capacity(LOCAL_COUNT),
-            errors: Vec::with_capacity(LOCAL_COUNT),
+            locals: Vec::with_capacity(Compiler::LOCAL_COUNT),
+            errors: Vec::with_capacity(Compiler::LOCAL_COUNT),
             scope_depth: 0,
         };
 
@@ -146,7 +146,7 @@ impl<'a> Compiler<'a> {
         }
         let count = self.function.upvalues.len();
 
-        if count == LOCAL_COUNT {
+        if count == Compiler::LOCAL_COUNT {
             self.errors.push("Too many closure variables in function.");
             return 0;
         }
@@ -171,176 +171,84 @@ impl ClassCompiler {
     }
 }
 
-pub struct Parser<'a> {
-    scanner: Scanner<'a>,
-    compiler: Box<Compiler<'a>>, // TODO: weird to have compiler inside parser
+pub struct Parser<'sourcecode> {
+    scanner: Scanner<'sourcecode>,
+    compiler: Box<Compiler<'sourcecode>>,
     class_compiler: Option<Box<ClassCompiler>>,
-    allocator: &'a mut Allocator,
-    current: Token<'a>,
-    previous: Token<'a>,
+    allocator: &'sourcecode mut Allocator,
+    current: Token<'sourcecode>,
+    previous: Token<'sourcecode>,
     had_error: bool,
     panic_mode: bool,
-    rules: HashMap<TokenType, ParseRule<'a>>,
+    rules: HashMap<TokenType, ParseRule<'sourcecode>>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, allocator: &'a mut Allocator) -> Parser<'a> {
-        let t1 = Token {
-            kind: TokenType::Eof,
-            lexeme: "",
-            line: 1,
-        };
-
-        let t2 = Token {
-            kind: TokenType::Eof,
-            lexeme: "",
-            line: 1,
-        };
-
+impl<'sourcecode> Parser<'sourcecode> {
+    pub fn new(
+        code: &'sourcecode str,
+        allocator: &'sourcecode mut Allocator,
+    ) -> Parser<'sourcecode> {
         let mut rules = HashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
             rules.insert(kind, ParseRule::new(prefix, infix, precedence));
         };
 
+        use Precedence as P;
+        use TokenType::*;
         rule(
-            TokenType::LeftParen,
+            LeftParen,
             Some(Parser::grouping),
             Some(Parser::call),
-            Precedence::Call,
+            P::Call,
         );
-        rule(TokenType::RightParen, None, None, Precedence::None);
-        rule(TokenType::LeftBrace, None, None, Precedence::None);
-        rule(TokenType::RightBrace, None, None, Precedence::None);
-        rule(TokenType::Comma, None, None, Precedence::None);
-        rule(TokenType::Dot, None, Some(Parser::dot), Precedence::Call);
-        rule(
-            TokenType::Minus,
-            Some(Parser::unary),
-            Some(Parser::binary),
-            Precedence::Term,
-        );
-        rule(
-            TokenType::Plus,
-            None,
-            Some(Parser::binary),
-            Precedence::Term,
-        );
-        rule(TokenType::Semicolon, None, None, Precedence::None);
-        rule(
-            TokenType::Slash,
-            None,
-            Some(Parser::binary),
-            Precedence::Factor,
-        );
-        rule(
-            TokenType::Star,
-            None,
-            Some(Parser::binary),
-            Precedence::Factor,
-        );
-        rule(TokenType::Bang, Some(Parser::unary), None, Precedence::None);
-        rule(
-            TokenType::BangEqual,
-            None,
-            Some(Parser::binary),
-            Precedence::Equality,
-        );
-        rule(TokenType::Equal, None, None, Precedence::None);
-        rule(
-            TokenType::EqualEqual,
-            None,
-            Some(Parser::binary),
-            Precedence::Equality,
-        );
-        rule(
-            TokenType::Greater,
-            None,
-            Some(Parser::binary),
-            Precedence::Comparison,
-        );
-        rule(
-            TokenType::GreaterEqual,
-            None,
-            Some(Parser::binary),
-            Precedence::Comparison,
-        );
-        rule(
-            TokenType::Less,
-            None,
-            Some(Parser::binary),
-            Precedence::Comparison,
-        );
-        rule(
-            TokenType::LessEqual,
-            None,
-            Some(Parser::binary),
-            Precedence::Comparison,
-        );
-        rule(
-            TokenType::Identifier,
-            Some(Parser::variable),
-            None,
-            Precedence::None,
-        );
-        rule(
-            TokenType::String,
-            Some(Parser::string),
-            None,
-            Precedence::None,
-        );
-        rule(
-            TokenType::Number,
-            Some(Parser::number),
-            None,
-            Precedence::None,
-        );
-        rule(TokenType::And, None, Some(Parser::and_op), Precedence::And);
-        rule(TokenType::Class, None, None, Precedence::None);
-        rule(TokenType::Else, None, None, Precedence::None);
-        rule(
-            TokenType::False,
-            Some(Parser::literal),
-            None,
-            Precedence::None,
-        );
-        rule(TokenType::For, None, None, Precedence::None);
-        rule(TokenType::Fun, None, None, Precedence::None);
-        rule(TokenType::If, None, None, Precedence::None);
-        rule(
-            TokenType::Nil,
-            Some(Parser::literal),
-            None,
-            Precedence::None,
-        );
-        rule(TokenType::Or, None, Some(Parser::or_op), Precedence::Or);
-        rule(TokenType::Print, None, None, Precedence::None);
-        rule(TokenType::Return, None, None, Precedence::None);
-        rule(
-            TokenType::Super,
-            Some(Parser::super_),
-            None,
-            Precedence::None,
-        );
-        rule(TokenType::This, Some(Parser::this), None, Precedence::None);
-        rule(
-            TokenType::True,
-            Some(Parser::literal),
-            None,
-            Precedence::None,
-        );
-        rule(TokenType::Var, None, None, Precedence::None);
-        rule(TokenType::While, None, None, Precedence::None);
-        rule(TokenType::Error, None, None, Precedence::None);
-        rule(TokenType::Eof, None, None, Precedence::None);
+        rule(RightParen, None, None, P::None);
+        rule(LeftBrace, None, None, P::None);
+        rule(RightBrace, None, None, P::None);
+        rule(Comma, None, None, P::None);
+        rule(Dot, None, Some(Parser::dot), P::Call);
+        rule(Minus, Some(Parser::unary), Some(Parser::binary), P::Term);
+        rule(Plus, None, Some(Parser::binary), P::Term);
+        rule(Semicolon, None, None, P::None);
+        rule(Slash, None, Some(Parser::binary), P::Factor);
+        rule(Star, None, Some(Parser::binary), P::Factor);
+        rule(Bang, Some(Parser::unary), None, P::None);
+        rule(BangEqual, None, Some(Parser::binary), P::Equality);
+        rule(Equal, None, None, P::None);
+        rule(EqualEqual, None, Some(Parser::binary), P::Equality);
+        rule(Greater, None, Some(Parser::binary), P::Comparison);
+        rule(GreaterEqual, None, Some(Parser::binary), P::Comparison);
+        rule(Less, None, Some(Parser::binary), P::Comparison);
+        rule(LessEqual, None, Some(Parser::binary), P::Comparison);
+        rule(Identifier, Some(Parser::variable), None, P::None);
+        rule(String, Some(Parser::string), None, P::None);
+        rule(Number, Some(Parser::number), None, P::None);
+        rule(And, None, Some(Parser::and_op), P::And);
+        rule(Class, None, None, P::None);
+        rule(Else, None, None, P::None);
+        rule(False, Some(Parser::literal), None, P::None);
+        rule(For, None, None, P::None);
+        rule(Fun, None, None, P::None);
+        rule(If, None, None, P::None);
+        rule(Nil, Some(Parser::literal), None, P::None);
+        rule(Or, None, Some(Parser::or_op), P::Or);
+        rule(Print, None, None, P::None);
+        rule(Return, None, None, P::None);
+        rule(Super, Some(Parser::super_), None, P::None);
+        rule(This, Some(Parser::this), None, P::None);
+        rule(True, Some(Parser::literal), None, P::None);
+        rule(Var, None, None, P::None);
+        rule(While, None, None, P::None);
+        rule(Error, None, None, P::None);
+        rule(Eof, None, None, P::None);
 
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(None, FunctionType::Script),
             class_compiler: None,
             allocator,
-            current: t1,
-            previous: t2,
+            current: Token::synthetic(""),
+            previous: Token::synthetic(""),
             had_error: false,
             panic_mode: false,
             rules,
@@ -920,6 +828,7 @@ impl<'a> Parser<'a> {
         self.add_local(name);
     }
 
+    // TODO: move to compiler?
     fn is_local_declared(&self, name: Token) -> bool {
         for local in self.compiler.locals.iter().rev() {
             if local.depth != -1 && local.depth < self.compiler.scope_depth {
@@ -932,8 +841,9 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn add_local(&mut self, token: Token<'a>) {
-        if self.compiler.locals.len() == LOCAL_COUNT {
+    // TODO: move to compiler?
+    fn add_local(&mut self, token: Token<'sourcecode>) {
+        if self.compiler.locals.len() == Compiler::LOCAL_COUNT {
             self.error("Too many local variables in function.");
             return;
         }
@@ -1098,7 +1008,7 @@ impl<'a> Parser<'a> {
         self.emit(Instruction::Constant(index));
     }
 
-    fn get_rule(&self, kind: TokenType) -> ParseRule<'a> {
+    fn get_rule(&self, kind: TokenType) -> ParseRule<'sourcecode> {
         self.rules.get(&kind).cloned().unwrap()
     }
 }
