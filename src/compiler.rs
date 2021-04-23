@@ -171,7 +171,7 @@ impl ClassCompiler {
     }
 }
 
-pub struct Parser<'sourcecode> {
+struct Parser<'sourcecode> {
     scanner: Scanner<'sourcecode>,
     compiler: Box<Compiler<'sourcecode>>,
     class_compiler: Option<Box<ClassCompiler>>,
@@ -184,10 +184,7 @@ pub struct Parser<'sourcecode> {
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
-    pub fn new(
-        code: &'sourcecode str,
-        allocator: &'sourcecode mut Allocator,
-    ) -> Parser<'sourcecode> {
+    fn new(code: &'sourcecode str, allocator: &'sourcecode mut Allocator) -> Parser<'sourcecode> {
         let mut rules = HashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
@@ -255,7 +252,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         }
     }
 
-    pub fn compile(mut self) -> Result<Reference<LoxFunction>, LoxError> {
+    fn compile(mut self) -> Result<Reference<LoxFunction>, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -1011,4 +1008,9 @@ impl<'sourcecode> Parser<'sourcecode> {
     fn get_rule(&self, kind: TokenType) -> ParseRule<'sourcecode> {
         self.rules.get(&kind).cloned().unwrap()
     }
+}
+
+pub fn compile(code: &str, allocator: &mut Allocator) -> Result<Reference<LoxFunction>, LoxError> {
+    let parser = Parser::new(code, allocator);
+    Ok(parser.compile()?)
 }

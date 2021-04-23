@@ -7,7 +7,7 @@ use crate::{
     class::{BoundMethod, Instance, LoxClass},
     closure::Closure,
     closure::ObjUpvalue,
-    compiler::Parser,
+    compiler::compile,
     error::LoxError,
     function::NativeFn,
 };
@@ -46,8 +46,7 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let parser = Parser::new(code, &mut self.allocator);
-        let function = parser.compile()?;
+        let function = compile(code, &mut self.allocator)?;
         self.push(Value::Function(function));
         let closure = self.alloc(Closure::new(function));
         self.frames.push(CallFrame::new(closure, 0));
