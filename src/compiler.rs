@@ -282,7 +282,12 @@ impl<'sourcecode> Parser<'sourcecode> {
 
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
-            self.compiler.function.chunk.disassemble("code");
+            let dis = crate::chunk::Disassembler::new(
+                self.allocator,
+                &self.compiler.function.chunk,
+                None,
+            );
+            dis.disassemble("code");
         }
 
         if self.had_error {

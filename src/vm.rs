@@ -124,13 +124,12 @@ impl Vm {
 
             #[cfg(feature = "debug_trace_execution")]
             {
-                for value in self.stack.iter() {
-                    print!("[{}]", value);
-                }
-                println!();
-
-                self.current_chunk()
-                    .disassemble_instruction(&instruction, self.current_frame().ip);
+                let dis = crate::chunk::Disassembler::new(
+                    &self.allocator,
+                    self.current_chunk(),
+                    Some(&self.stack),
+                );
+                dis.instruction(&instruction, self.current_frame().ip);
             }
 
             self.current_frame_mut().ip += 1;
