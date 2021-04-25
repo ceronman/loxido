@@ -87,7 +87,6 @@ struct Compiler<'sourcecode> {
     function: LoxFunction,
     function_type: FunctionType,
     locals: Vec<Local<'sourcecode>>,
-    errors: Vec<&'static str>,
     scope_depth: i32,
 }
 
@@ -100,7 +99,6 @@ impl<'sourcecode> Compiler<'sourcecode> {
             function: LoxFunction::default(),
             function_type: kind,
             locals: Vec::with_capacity(Compiler::LOCAL_COUNT),
-            errors: Vec::with_capacity(Compiler::LOCAL_COUNT),
             scope_depth: 0,
         };
 
@@ -112,12 +110,11 @@ impl<'sourcecode> Compiler<'sourcecode> {
         Box::new(compiler)
     }
 
-    fn resolve_local(&mut self, name: Token) -> Option<u8> {
+    fn resolve_local(&mut self, name: Token, errors: &mut Vec<&'static str>) -> Option<u8> {
         for (i, local) in self.locals.iter().enumerate().rev() {
             if name.lexeme == local.name.lexeme {
                 if local.depth == -1 {
-                    self.errors
-                        .push("Can't read local variable in its own initializer.");
+                    errors.push("Can't read local variable in its own initializer.");
                 }
                 return Some(i as u8);
             }
@@ -125,20 +122,20 @@ impl<'sourcecode> Compiler<'sourcecode> {
         None
     }
 
-    fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
+    fn resolve_upvalue(&mut self, name: Token, errors: &mut Vec<&'static str>) -> Option<u8> {
         if let Some(enclosing) = self.enclosing.as_mut() {
-            if let Some(index) = enclosing.resolve_local(name) {
+            if let Some(index) = enclosing.resolve_local(name, errors) {
                 enclosing.locals[index as usize].is_captured = true;
-                return Some(self.add_upvalue(index, true));
+                return Some(self.add_upvalue(index, true, errors));
             }
-            if let Some(index) = enclosing.resolve_upvalue(name) {
-                return Some(self.add_upvalue(index, false));
+            if let Some(index) = enclosing.resolve_upvalue(name, errors) {
+                return Some(self.add_upvalue(index, false, errors));
             }
         }
         None
     }
 
-    fn add_upvalue(&mut self, index: u8, is_local: bool) -> u8 {
+    fn add_upvalue(&mut self, index: u8, is_local: bool, errors: &mut Vec<&'static str>) -> u8 {
         for (i, upvalue) in self.function.upvalues.iter().enumerate() {
             if upvalue.index == index && upvalue.is_local == is_local {
                 return i as u8;
@@ -147,13 +144,25 @@ impl<'sourcecode> Compiler<'sourcecode> {
         let count = self.function.upvalues.len();
 
         if count == Compiler::LOCAL_COUNT {
-            self.errors.push("Too many closure variables in function.");
+            errors.push("Too many closure variables in function.");
             return 0;
         }
 
         let upvalue = Upvalue { index, is_local };
         self.function.upvalues.push(upvalue);
         count as u8
+    }
+
+    fn is_local_declared(&self, name: Token) -> bool {
+        for local in self.locals.iter().rev() {
+            if local.depth != -1 && local.depth < self.scope_depth {
+                return false;
+            }
+            if local.name.lexeme == name.lexeme {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -180,6 +189,7 @@ struct Parser<'sourcecode> {
     previous: Token<'sourcecode>,
     had_error: bool,
     panic_mode: bool,
+    resolver_errors: Vec<&'static str>,
     rules: HashMap<TokenType, ParseRule<'sourcecode>>,
 }
 
@@ -248,6 +258,7 @@ impl<'sourcecode> Parser<'sourcecode> {
             previous: Token::synthetic(""),
             had_error: false,
             panic_mode: false,
+            resolver_errors: Vec::new(),
             rules,
         }
     }
@@ -307,7 +318,6 @@ impl<'sourcecode> Parser<'sourcecode> {
         self.emit(Instruction::Class(name_constant));
         self.define_variable(name_constant);
 
-        // TODO: Find how to use stack based linked list: https://aloso.github.io/2021/04/12/linked-list.html
         let old_class_compiler = self.class_compiler.take();
         let new_class_compiler = ClassCompiler::new(old_class_compiler);
         self.class_compiler.replace(new_class_compiler);
@@ -392,7 +402,6 @@ impl<'sourcecode> Parser<'sourcecode> {
         let function = self.pop_compiler();
         let fn_id = self.allocator.alloc(function);
 
-        // TODO: these two lines are very similar to emit_constant
         let index = self.make_constant(Value::Function(fn_id));
         self.emit(Instruction::Closure(index));
     }
@@ -662,19 +671,20 @@ impl<'sourcecode> Parser<'sourcecode> {
         }
     }
 
-    // TODO: resolve_local and resolve_upvalue are pretty much the same
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
-        let result = self.compiler.resolve_local(name);
-        while let Some(error) = self.compiler.errors.pop() {
-            self.error(error);
+        let result = self.compiler.resolve_local(name, &mut self.resolver_errors);
+        while let Some(e) = self.resolver_errors.pop() {
+            self.error(e);
         }
         result
     }
 
     fn resolve_upvalue(&mut self, name: Token) -> Option<u8> {
-        let result = self.compiler.resolve_upvalue(name);
-        while let Some(error) = self.compiler.errors.pop() {
-            self.error(error);
+        let result = self
+            .compiler
+            .resolve_upvalue(name, &mut self.resolver_errors);
+        while let Some(e) = self.resolver_errors.pop() {
+            self.error(e);
         }
         result
     }
@@ -773,7 +783,6 @@ impl<'sourcecode> Parser<'sourcecode> {
         self.advance();
         let prefix_rule = self.get_rule(self.previous.kind).prefix;
 
-        // TODO: better alternative for this match?
         let prefix_rule = match prefix_rule {
             Some(rule) => rule,
             None => {
@@ -819,26 +828,12 @@ impl<'sourcecode> Parser<'sourcecode> {
             return;
         }
         let name = self.previous;
-        if self.is_local_declared(name) {
+        if self.compiler.is_local_declared(name) {
             self.error("Already variable with this name in this scope.");
         }
         self.add_local(name);
     }
 
-    // TODO: move to compiler?
-    fn is_local_declared(&self, name: Token) -> bool {
-        for local in self.compiler.locals.iter().rev() {
-            if local.depth != -1 && local.depth < self.compiler.scope_depth {
-                return false;
-            }
-            if local.name.lexeme == name.lexeme {
-                return true;
-            }
-        }
-        false
-    }
-
-    // TODO: move to compiler?
     fn add_local(&mut self, token: Token<'sourcecode>) {
         if self.compiler.locals.len() == Compiler::LOCAL_COUNT {
             self.error("Too many local variables in function.");
