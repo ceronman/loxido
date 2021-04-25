@@ -1015,5 +1015,5 @@ impl<'sourcecode> Parser<'sourcecode> {
 
 pub fn compile(code: &str, allocator: &mut Allocator) -> Result<Reference<LoxFunction>, LoxError> {
     let parser = Parser::new(code, allocator);
-    Ok(parser.compile()?)
+    parser.compile()
 }
