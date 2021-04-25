@@ -2,21 +2,21 @@ use cpu_time::ProcessTime;
 use fmt::Debug;
 
 use crate::{
-    allocator::{Allocator, Reference, Trace, TraceFormatter},
     chunk::{Chunk, Instruction, Table, Value},
     compiler::compile,
     error::LoxError,
+    gc::{Gc, GcRef, GcTrace, GcTraceFormatter},
     objects::{BoundMethod, Closure, Instance, LoxClass, NativeFn, ObjUpvalue},
 };
 use std::fmt;
 
 pub struct Vm {
-    allocator: Allocator,
+    allocator: Gc,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: Table,
-    open_upvalues: Vec<Reference<ObjUpvalue>>,
-    init_string: Reference<String>,
+    open_upvalues: Vec<GcRef<ObjUpvalue>>,
+    init_string: GcRef<String>,
     start_time: ProcessTime,
 }
 
@@ -25,7 +25,7 @@ impl Vm {
     const STACK_SIZE: usize = Vm::MAX_FRAMES * (std::u8::MAX as usize) + 1;
 
     pub fn new() -> Self {
-        let mut allocator = Allocator::new();
+        let mut allocator = Gc::new();
         let init_string = allocator.intern("init".to_owned());
 
         let mut vm = Self {
@@ -319,7 +319,7 @@ impl Vm {
                 }
                 Instruction::Print => {
                     let value = self.pop();
-                    let formatter = TraceFormatter::new(value, &self.allocator);
+                    let formatter = GcTraceFormatter::new(value, &self.allocator);
                     println!("{}", formatter);
                 }
                 Instruction::Return => {
@@ -422,7 +422,7 @@ impl Vm {
         }
     }
 
-    fn call(&mut self, closure_ref: Reference<Closure>, arg_count: usize) -> Result<(), LoxError> {
+    fn call(&mut self, closure_ref: GcRef<Closure>, arg_count: usize) -> Result<(), LoxError> {
         let closure = self.allocator.deref(closure_ref);
         let function = self.allocator.deref(closure.function);
         if arg_count != function.arity {
@@ -440,7 +440,7 @@ impl Vm {
         }
     }
 
-    fn invoke(&mut self, name: Reference<String>, arg_count: usize) -> Result<(), LoxError> {
+    fn invoke(&mut self, name: GcRef<String>, arg_count: usize) -> Result<(), LoxError> {
         let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
             let instance = self.allocator.deref(instance);
@@ -458,8 +458,8 @@ impl Vm {
 
     fn invoke_from_class(
         &mut self,
-        class: Reference<LoxClass>,
-        name: Reference<String>,
+        class: GcRef<LoxClass>,
+        name: GcRef<String>,
         arg_count: usize,
     ) -> Result<(), LoxError> {
         let class = self.allocator.deref(class);
@@ -476,11 +476,7 @@ impl Vm {
         }
     }
 
-    fn bind_method(
-        &mut self,
-        class: Reference<LoxClass>,
-        name: Reference<String>,
-    ) -> Result<(), LoxError> {
+    fn bind_method(&mut self, class: GcRef<LoxClass>, name: GcRef<String>) -> Result<(), LoxError> {
         let class = self.allocator.deref(class);
         if let Some(method) = class.methods.get(&name) {
             let receiver = self.peek(0);
@@ -500,7 +496,7 @@ impl Vm {
         }
     }
 
-    fn capture_upvalue(&mut self, location: usize) -> Reference<ObjUpvalue> {
+    fn capture_upvalue(&mut self, location: usize) -> GcRef<ObjUpvalue> {
         for &upvalue_ref in &self.open_upvalues {
             let upvalue = self.allocator.deref(upvalue_ref);
             if upvalue.location == location {
@@ -528,7 +524,7 @@ impl Vm {
         }
     }
 
-    fn define_method(&mut self, name: Reference<String>) {
+    fn define_method(&mut self, name: GcRef<String>) {
         let method = self.peek(0);
         if let Value::Class(class) = self.peek(1) {
             let class = self.allocator.deref_mut(class);
@@ -539,12 +535,12 @@ impl Vm {
         }
     }
 
-    fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
+    fn alloc<T: GcTrace + 'static + Debug>(&mut self, object: T) -> GcRef<T> {
         self.mark_and_sweep();
         self.allocator.alloc(object)
     }
 
-    fn intern(&mut self, name: String) -> Reference<String> {
+    fn intern(&mut self, name: String) -> GcRef<String> {
         self.mark_and_sweep();
         self.allocator.intern(name)
     }
@@ -581,13 +577,13 @@ impl Vm {
 }
 
 struct CallFrame {
-    closure: Reference<Closure>,
+    closure: GcRef<Closure>,
     ip: usize,
     slot: usize,
 }
 
 impl CallFrame {
-    fn new(closure: Reference<Closure>, slot: usize) -> Self {
+    fn new(closure: GcRef<Closure>, slot: usize) -> Self {
         CallFrame {
             closure,
             ip: 0,
@@ -605,7 +601,7 @@ fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
     let mut terms: Vec<String> = vec![];
 
     for &arg in args.iter() {
-        let formatter = TraceFormatter::new(arg, &vm.allocator);
+        let formatter = GcTraceFormatter::new(arg, &vm.allocator);
         let term = format!("{}", formatter);
         terms.push(term);
     }

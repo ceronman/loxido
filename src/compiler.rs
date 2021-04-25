@@ -1,7 +1,7 @@
 use crate::{
-    allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     error::LoxError,
+    gc::{Gc, GcRef},
     objects::LoxFunction,
     objects::Upvalue,
     scanner::{Scanner, Token, TokenType},
@@ -101,7 +101,7 @@ struct Compiler<'sourcecode> {
 impl<'sourcecode> Compiler<'sourcecode> {
     const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
-    fn new(function_name: Reference<String>, kind: FunctionType) -> Box<Self> {
+    fn new(function_name: GcRef<String>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
             enclosing: None,
             function: LoxFunction::new(function_name),
@@ -192,7 +192,7 @@ struct Parser<'sourcecode> {
     scanner: Scanner<'sourcecode>,
     compiler: Box<Compiler<'sourcecode>>,
     class_compiler: Option<Box<ClassCompiler>>,
-    allocator: &'sourcecode mut Allocator,
+    allocator: &'sourcecode mut Gc,
     current: Token<'sourcecode>,
     previous: Token<'sourcecode>,
     had_error: bool,
@@ -202,7 +202,7 @@ struct Parser<'sourcecode> {
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
-    fn new(code: &'sourcecode str, allocator: &'sourcecode mut Allocator) -> Parser<'sourcecode> {
+    fn new(code: &'sourcecode str, allocator: &'sourcecode mut Gc) -> Parser<'sourcecode> {
         let mut rules = HashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
@@ -273,7 +273,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         }
     }
 
-    fn compile(mut self) -> Result<Reference<LoxFunction>, LoxError> {
+    fn compile(mut self) -> Result<GcRef<LoxFunction>, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -1019,7 +1019,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 }
 
-pub fn compile(code: &str, allocator: &mut Allocator) -> Result<Reference<LoxFunction>, LoxError> {
+pub fn compile(code: &str, allocator: &mut Gc) -> Result<GcRef<LoxFunction>, LoxError> {
     let parser = Parser::new(code, allocator);
     parser.compile()
 }

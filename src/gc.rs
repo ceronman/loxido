@@ -5,38 +5,38 @@ use fmt::Debug;
 
 use crate::chunk::{Table, Value};
 
-pub trait Trace {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result;
+pub trait GcTrace {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result;
     fn size(&self) -> usize;
-    fn trace(&self, allocator: &mut Allocator);
+    fn trace(&self, allocator: &mut Gc);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
-pub struct TraceFormatter<'allocator, T: Trace> {
-    allocator: &'allocator Allocator,
+pub struct GcTraceFormatter<'allocator, T: GcTrace> {
+    allocator: &'allocator Gc,
     object: T,
 }
 
-impl<'allocator, T: Trace> TraceFormatter<'allocator, T> {
-    pub fn new(object: T, allocator: &'allocator Allocator) -> Self {
-        TraceFormatter { object, allocator }
+impl<'allocator, T: GcTrace> GcTraceFormatter<'allocator, T> {
+    pub fn new(object: T, allocator: &'allocator Gc) -> Self {
+        GcTraceFormatter { object, allocator }
     }
 }
 
-impl<'allocator, T: Trace> fmt::Display for TraceFormatter<'allocator, T> {
+impl<'allocator, T: GcTrace> fmt::Display for GcTraceFormatter<'allocator, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.object.format(f, self.allocator)
     }
 }
 
-impl Trace for Empty {
-    fn format(&self, f: &mut fmt::Formatter, _allocator: &Allocator) -> fmt::Result {
+impl GcTrace for Empty {
+    fn format(&self, f: &mut fmt::Formatter, _allocator: &Gc) -> fmt::Result {
         write!(f, "<empty>")
     }
     fn size(&self) -> usize {
         0
     }
-    fn trace(&self, _allocator: &mut Allocator) {}
+    fn trace(&self, _allocator: &mut Gc) {}
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -45,22 +45,22 @@ impl Trace for Empty {
     }
 }
 
-pub struct Reference<T: Trace> {
+pub struct GcRef<T: GcTrace> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: Trace> Copy for Reference<T> {}
-impl<T: Trace> Eq for Reference<T> {}
+impl<T: GcTrace> Copy for GcRef<T> {}
+impl<T: GcTrace> Eq for GcRef<T> {}
 
-impl<T: Trace> Clone for Reference<T> {
+impl<T: GcTrace> Clone for GcRef<T> {
     #[inline]
-    fn clone(&self) -> Reference<T> {
+    fn clone(&self) -> GcRef<T> {
         *self
     }
 }
 
-impl<T: Trace> Debug for Reference<T> {
+impl<T: GcTrace> Debug for GcRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let full_name = type_name::<T>();
         full_name.split("::").last().unwrap();
@@ -68,13 +68,13 @@ impl<T: Trace> Debug for Reference<T> {
     }
 }
 
-impl<T: Trace> PartialEq for Reference<T> {
+impl<T: GcTrace> PartialEq for GcRef<T> {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index
     }
 }
 
-impl hash::Hash for Reference<String> {
+impl hash::Hash for GcRef<String> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.index.hash(state)
     }
@@ -85,7 +85,7 @@ struct Empty;
 struct ObjHeader {
     is_marked: bool,
     size: usize,
-    obj: Box<dyn Trace>,
+    obj: Box<dyn GcTrace>,
 }
 
 impl ObjHeader {
@@ -98,20 +98,20 @@ impl ObjHeader {
     }
 }
 
-pub struct Allocator {
+pub struct Gc {
     bytes_allocated: usize,
     next_gc: usize,
     free_slots: Vec<usize>,
     objects: Vec<ObjHeader>,
-    strings: HashMap<String, Reference<String>>,
+    strings: HashMap<String, GcRef<String>>,
     grey_stack: VecDeque<usize>,
 }
 
-impl Allocator {
+impl Gc {
     const GC_HEAP_GROW_FACTOR: usize = 2;
 
     pub fn new() -> Self {
-        Allocator {
+        Gc {
             bytes_allocated: 0,
             next_gc: 1024 * 1024,
             free_slots: Vec::new(),
@@ -121,7 +121,7 @@ impl Allocator {
         }
     }
 
-    pub fn alloc<T: Trace + 'static + Debug>(&mut self, object: T) -> Reference<T> {
+    pub fn alloc<T: GcTrace + 'static + Debug>(&mut self, object: T) -> GcRef<T> {
         #[cfg(feature = "debug_log_gc")]
         let repr = format!("{:?}", object)
             .chars()
@@ -154,13 +154,13 @@ impl Allocator {
             self.bytes_allocated,
             self.next_gc,
         );
-        Reference {
+        GcRef {
             index,
             _marker: PhantomData,
         }
     }
 
-    pub fn intern(&mut self, name: String) -> Reference<String> {
+    pub fn intern(&mut self, name: String) -> GcRef<String> {
         if let Some(&value) = self.strings.get(&name) {
             value
         } else {
@@ -170,7 +170,7 @@ impl Allocator {
         }
     }
 
-    pub fn deref<T: Trace + 'static>(&self, reference: Reference<T>) -> &T {
+    pub fn deref<T: GcTrace + 'static>(&self, reference: GcRef<T>) -> &T {
         self.objects[reference.index]
             .obj
             .as_any()
@@ -179,7 +179,7 @@ impl Allocator {
         // .expect(&format!("Reference {} not found", reference.index))
     }
 
-    pub fn deref_mut<T: Trace + 'static>(&mut self, reference: Reference<T>) -> &mut T {
+    pub fn deref_mut<T: GcTrace + 'static>(&mut self, reference: GcRef<T>) -> &mut T {
         self.objects[reference.index]
             .obj
             .as_any_mut()
@@ -203,7 +203,7 @@ impl Allocator {
         self.trace_references();
         self.remove_white_strings();
         self.sweep();
-        self.next_gc = self.bytes_allocated * Allocator::GC_HEAP_GROW_FACTOR;
+        self.next_gc = self.bytes_allocated * Gc::GC_HEAP_GROW_FACTOR;
 
         #[cfg(feature = "debug_log_gc")]
         println!(
@@ -235,7 +235,7 @@ impl Allocator {
         value.trace(self);
     }
 
-    pub fn mark_object<T: Trace>(&mut self, obj: Reference<T>) {
+    pub fn mark_object<T: GcTrace>(&mut self, obj: GcRef<T>) {
         if self.objects[obj.index].is_marked {
             return;
         }

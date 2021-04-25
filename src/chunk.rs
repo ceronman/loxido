@@ -1,5 +1,5 @@
 use crate::{
-    allocator::{Allocator, Reference, Trace},
+    gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Closure, Instance, LoxClass, LoxFunction, NativeFn},
 };
 use std::{any::Any, collections::HashMap, fmt};
@@ -7,15 +7,15 @@ use std::{any::Any, collections::HashMap, fmt};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Bool(bool),
-    BoundMethod(Reference<BoundMethod>),
-    Class(Reference<LoxClass>),
-    Closure(Reference<Closure>),
-    Function(Reference<LoxFunction>),
-    Instance(Reference<Instance>),
+    BoundMethod(GcRef<BoundMethod>),
+    Class(GcRef<LoxClass>),
+    Closure(GcRef<Closure>),
+    Function(GcRef<LoxFunction>),
+    Instance(GcRef<Instance>),
     NativeFunction(NativeFn),
     Nil,
     Number(f64),
-    String(Reference<String>),
+    String(GcRef<String>),
 }
 
 impl Value {
@@ -28,8 +28,8 @@ impl Value {
     }
 }
 
-impl Trace for Value {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Allocator) -> fmt::Result {
+impl GcTrace for Value {
+    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
         match self {
             Value::Bool(value) => write!(f, "{}", value),
             Value::BoundMethod(value) => allocator.deref(*value).format(f, allocator),
@@ -53,7 +53,7 @@ impl Trace for Value {
     fn size(&self) -> usize {
         0
     }
-    fn trace(&self, allocator: &mut Allocator) {
+    fn trace(&self, allocator: &mut Gc) {
         match self {
             Value::BoundMethod(value) => allocator.mark_object(*value),
             Value::Class(value) => allocator.mark_object(*value),
@@ -72,7 +72,7 @@ impl Trace for Value {
     }
 }
 
-pub type Table = HashMap<Reference<String>, Value>;
+pub type Table = HashMap<GcRef<String>, Value>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {
@@ -145,7 +145,7 @@ impl Chunk {
         self.constants[index as usize]
     }
 
-    pub fn read_string(&self, index: u8) -> Reference<String> {
+    pub fn read_string(&self, index: u8) -> GcRef<String> {
         if let Value::String(s) = self.read_constant(index) {
             s
         } else {
