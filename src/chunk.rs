@@ -1,7 +1,6 @@
 use crate::{
     allocator::{Allocator, Reference, Trace},
-    class::{BoundMethod, Instance, LoxClass},
-    function::{Closure, LoxFunction, NativeFn},
+    function::{BoundMethod, Closure, Instance, LoxClass, LoxFunction, NativeFn},
 };
 use std::{any::Any, collections::HashMap, fmt};
 

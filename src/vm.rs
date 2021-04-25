@@ -4,10 +4,9 @@ use fmt::Debug;
 use crate::{
     allocator::{Allocator, Reference, Trace, TraceFormatter},
     chunk::{Chunk, Instruction, Table, Value},
-    class::{BoundMethod, Instance, LoxClass},
     compiler::compile,
     error::LoxError,
-    function::{Closure, NativeFn, ObjUpvalue},
+    function::{BoundMethod, Closure, Instance, LoxClass, NativeFn, ObjUpvalue},
 };
 use std::fmt;
 
