@@ -3,7 +3,7 @@ use std::{any::Any, fmt, mem};
 use crate::{
     allocator::{Allocator, Reference, Trace},
     chunk::{Table, Value},
-    closure::Closure,
+    function::Closure,
 };
 
 #[derive(Debug)]

@@ -2,8 +2,8 @@ use crate::{
     allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     error::LoxError,
+    function::LoxFunction,
     function::Upvalue,
-    function::{FunctionType, LoxFunction},
     scanner::{Scanner, Token, TokenType},
 };
 use std::collections::HashMap;
@@ -80,6 +80,14 @@ impl<'sourcecode> Local<'sourcecode> {
             is_captured: false,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum FunctionType {
+    Function,
+    Initializer,
+    Method,
+    Script,
 }
 
 struct Compiler<'sourcecode> {

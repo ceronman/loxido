@@ -5,8 +5,7 @@ use fmt::Debug;
 
 use crate::{
     chunk::{Instruction, Table, Value},
-    closure::{Closure, ObjUpvalue},
-    function::{LoxFunction, Upvalue},
+    function::{Closure, LoxFunction, ObjUpvalue, Upvalue},
 };
 
 pub trait Trace {

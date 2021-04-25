@@ -2,15 +2,6 @@ use std::fmt;
 
 use crate::{allocator::Reference, chunk::Chunk, chunk::Value, vm::Vm};
 
-// TODO: Move this to compiler?
-#[derive(Clone, Copy)]
-pub enum FunctionType {
-    Function,
-    Initializer,
-    Method,
-    Script,
-}
-
 #[derive(Clone, Copy)]
 pub struct NativeFn(pub fn(&Vm, &[Value]) -> Value);
 
@@ -21,12 +12,11 @@ impl fmt::Debug for NativeFn {
 }
 
 impl PartialEq for NativeFn {
-    fn eq(&self, _other: &Self) -> bool {
-        false // TODO: Implement
+    fn eq(&self, other: &Self) -> bool {
+        self as *const _ == other as *const _
     }
 }
 
-// TODO: Only needed because of clone() done in Closure instruction
 #[derive(Copy, Clone, Debug)]
 pub struct Upvalue {
     pub index: u8,
@@ -39,4 +29,34 @@ pub struct LoxFunction {
     pub chunk: Chunk,
     pub name: Reference<String>,
     pub upvalues: Vec<Upvalue>,
+}
+
+#[derive(Debug)]
+pub struct ObjUpvalue {
+    pub location: usize, // TODO: Make this a proper type
+    pub closed: Option<Value>,
+}
+
+impl ObjUpvalue {
+    pub fn new(location: usize) -> Self {
+        ObjUpvalue {
+            location,
+            closed: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Closure {
+    pub function: Reference<LoxFunction>,
+    pub upvalues: Vec<Reference<ObjUpvalue>>,
+}
+
+impl Closure {
+    pub fn new(function: Reference<LoxFunction>) -> Self {
+        Closure {
+            function,
+            upvalues: Vec::new(),
+        } // TODO: use .with_capacity
+    }
 }

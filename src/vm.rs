@@ -5,11 +5,9 @@ use crate::{
     allocator::{Allocator, Reference, Trace, TraceFormatter},
     chunk::{Chunk, Instruction, Table, Value},
     class::{BoundMethod, Instance, LoxClass},
-    closure::Closure,
-    closure::ObjUpvalue,
     compiler::compile,
     error::LoxError,
-    function::NativeFn,
+    function::{Closure, NativeFn, ObjUpvalue},
 };
 use std::fmt;
 

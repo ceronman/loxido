@@ -1,7 +1,6 @@
 mod allocator;
 mod chunk;
 mod class;
-mod closure;
 mod compiler;
 mod error;
 mod function;
