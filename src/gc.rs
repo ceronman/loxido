@@ -6,37 +6,37 @@ use fmt::Debug;
 use crate::chunk::{Table, Value};
 
 pub trait GcTrace {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result;
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result;
     fn size(&self) -> usize;
-    fn trace(&self, allocator: &mut Gc);
+    fn trace(&self, gc: &mut Gc);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
-pub struct GcTraceFormatter<'allocator, T: GcTrace> {
-    allocator: &'allocator Gc,
+pub struct GcTraceFormatter<'gc, T: GcTrace> {
+    gc: &'gc Gc,
     object: T,
 }
 
-impl<'allocator, T: GcTrace> GcTraceFormatter<'allocator, T> {
-    pub fn new(object: T, allocator: &'allocator Gc) -> Self {
-        GcTraceFormatter { object, allocator }
+impl<'gc, T: GcTrace> GcTraceFormatter<'gc, T> {
+    pub fn new(object: T, gc: &'gc Gc) -> Self {
+        GcTraceFormatter { object, gc }
     }
 }
 
-impl<'allocator, T: GcTrace> fmt::Display for GcTraceFormatter<'allocator, T> {
+impl<'gc, T: GcTrace> fmt::Display for GcTraceFormatter<'gc, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.object.format(f, self.allocator)
+        self.object.format(f, self.gc)
     }
 }
 
 impl GcTrace for Empty {
-    fn format(&self, f: &mut fmt::Formatter, _allocator: &Gc) -> fmt::Result {
+    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
         write!(f, "<empty>")
     }
     fn size(&self) -> usize {
         0
     }
-    fn trace(&self, _allocator: &mut Gc) {}
+    fn trace(&self, _gc: &mut Gc) {}
     fn as_any(&self) -> &dyn Any {
         self
     }

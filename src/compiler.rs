@@ -192,7 +192,7 @@ struct Parser<'sourcecode> {
     scanner: Scanner<'sourcecode>,
     compiler: Box<Compiler<'sourcecode>>,
     class_compiler: Option<Box<ClassCompiler>>,
-    allocator: &'sourcecode mut Gc,
+    gc: &'sourcecode mut Gc,
     current: Token<'sourcecode>,
     previous: Token<'sourcecode>,
     had_error: bool,
@@ -202,7 +202,7 @@ struct Parser<'sourcecode> {
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
-    fn new(code: &'sourcecode str, allocator: &'sourcecode mut Gc) -> Parser<'sourcecode> {
+    fn new(code: &'sourcecode str, gc: &'sourcecode mut Gc) -> Parser<'sourcecode> {
         let mut rules = HashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
@@ -257,13 +257,13 @@ impl<'sourcecode> Parser<'sourcecode> {
         rule(Error, None, None, P::None);
         rule(Eof, None, None, P::None);
 
-        let function_name = allocator.intern("script".to_owned());
+        let function_name = gc.intern("script".to_owned());
 
         Parser {
             scanner: Scanner::new(code),
             compiler: Compiler::new(function_name, FunctionType::Script),
             class_compiler: None,
-            allocator,
+            gc,
             current: Token::synthetic(""),
             previous: Token::synthetic(""),
             had_error: false,
@@ -285,7 +285,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
             let dis = crate::chunk::Disassembler::new(
-                self.allocator,
+                self.gc,
                 &self.compiler.function.chunk,
                 None,
             );
@@ -295,7 +295,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         if self.had_error {
             Err(LoxError::CompileError)
         } else {
-            Ok(self.allocator.alloc(self.compiler.function))
+            Ok(self.gc.alloc(self.compiler.function))
         }
     }
 
@@ -376,7 +376,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 
     fn push_compiler(&mut self, kind: FunctionType) {
-        let function_name = self.allocator.intern(self.previous.lexeme.to_owned());
+        let function_name = self.gc.intern(self.previous.lexeme.to_owned());
         let new_compiler = Compiler::new(function_name, kind);
         let old_compiler = mem::replace(&mut self.compiler, new_compiler);
         self.compiler.enclosing = Some(old_compiler);
@@ -414,7 +414,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
         let function = self.pop_compiler();
-        let fn_id = self.allocator.alloc(function);
+        let fn_id = self.gc.alloc(function);
 
         let index = self.make_constant(Value::Function(fn_id));
         self.emit(Instruction::Closure(index));
@@ -614,7 +614,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     fn string(&mut self, _can_assing: bool) {
         let lexeme = self.previous.lexeme;
         let value = &lexeme[1..(lexeme.len() - 1)];
-        let s = self.allocator.intern(value.to_owned());
+        let s = self.gc.intern(value.to_owned());
         self.emit_constant(Value::String(s));
     }
 
@@ -831,7 +831,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 
     fn identifier_constant(&mut self, token: Token) -> u8 {
-        let identifier = self.allocator.intern(token.lexeme.to_owned());
+        let identifier = self.gc.intern(token.lexeme.to_owned());
         let value = Value::String(identifier);
         self.make_constant(value)
     }
@@ -1019,7 +1019,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 }
 
-pub fn compile(code: &str, allocator: &mut Gc) -> Result<GcRef<LoxFunction>, LoxError> {
-    let parser = Parser::new(code, allocator);
+pub fn compile(code: &str, gc: &mut Gc) -> Result<GcRef<LoxFunction>, LoxError> {
+    let parser = Parser::new(code, gc);
     parser.compile()
 }

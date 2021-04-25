@@ -29,14 +29,14 @@ impl Value {
 }
 
 impl GcTrace for Value {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
         match self {
             Value::Bool(value) => write!(f, "{}", value),
-            Value::BoundMethod(value) => allocator.deref(*value).format(f, allocator),
-            Value::Class(value) => allocator.deref(*value).format(f, allocator),
-            Value::Closure(value) => allocator.deref(*value).format(f, allocator),
-            Value::Function(value) => allocator.deref(*value).format(f, allocator),
-            Value::Instance(value) => allocator.deref(*value).format(f, allocator),
+            Value::BoundMethod(value) => gc.deref(*value).format(f, gc),
+            Value::Class(value) => gc.deref(*value).format(f, gc),
+            Value::Closure(value) => gc.deref(*value).format(f, gc),
+            Value::Function(value) => gc.deref(*value).format(f, gc),
+            Value::Instance(value) => gc.deref(*value).format(f, gc),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => {
@@ -47,20 +47,20 @@ impl GcTrace for Value {
                     write!(f, "{}", value)
                 }
             }
-            Value::String(value) => allocator.deref(*value).format(f, allocator),
+            Value::String(value) => gc.deref(*value).format(f, gc),
         }
     }
     fn size(&self) -> usize {
         0
     }
-    fn trace(&self, allocator: &mut Gc) {
+    fn trace(&self, gc: &mut Gc) {
         match self {
-            Value::BoundMethod(value) => allocator.mark_object(*value),
-            Value::Class(value) => allocator.mark_object(*value),
-            Value::Closure(value) => allocator.mark_object(*value),
-            Value::Function(value) => allocator.mark_object(*value),
-            Value::Instance(value) => allocator.mark_object(*value),
-            Value::String(value) => allocator.mark_object(*value),
+            Value::BoundMethod(value) => gc.mark_object(*value),
+            Value::Class(value) => gc.mark_object(*value),
+            Value::Closure(value) => gc.mark_object(*value),
+            Value::Function(value) => gc.mark_object(*value),
+            Value::Instance(value) => gc.mark_object(*value),
+            Value::String(value) => gc.mark_object(*value),
             _ => (),
         }
     }
@@ -156,7 +156,7 @@ impl Chunk {
 
 #[cfg(feature = "debug_trace_execution")]
 pub struct Disassembler<'vm> {
-    allocator: &'vm Allocator,
+    gc: &'vm gc,
     chunk: &'vm Chunk,
     stack: Option<&'vm Vec<Value>>,
 }
@@ -164,12 +164,12 @@ pub struct Disassembler<'vm> {
 #[cfg(feature = "debug_trace_execution")]
 impl<'vm> Disassembler<'vm> {
     pub fn new(
-        allocator: &'vm Allocator,
+        gc: &'vm gc,
         chunk: &'vm Chunk,
         stack: Option<&'vm Vec<Value>>,
     ) -> Self {
         Disassembler {
-            allocator,
+            gc,
             chunk,
             stack,
         }
@@ -242,7 +242,7 @@ impl<'vm> Disassembler<'vm> {
             "{:<16} {:4} ({})",
             instruction,
             constant_index,
-            crate::allocator::TraceFormatter::new(value, self.allocator)
+            crate::gc::TraceFormatter::new(value, self.gc)
         );
     }
 
@@ -260,7 +260,7 @@ impl<'vm> Disassembler<'vm> {
             "{:<16} {:4} ({}) {}",
             instruction,
             constant_index,
-            crate::allocator::TraceFormatter::new(value, self.allocator),
+            crate::gc::TraceFormatter::new(value, self.gc),
             args
         );
     }
@@ -271,7 +271,7 @@ impl<'vm> Disassembler<'vm> {
             for &value in stack.iter() {
                 print!(
                     "[{}]",
-                    crate::allocator::TraceFormatter::new(value, self.allocator)
+                    crate::gc::TraceFormatter::new(value, self.gc)
                 );
             }
             println!();

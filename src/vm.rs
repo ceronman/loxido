@@ -11,7 +11,7 @@ use crate::{
 use std::fmt;
 
 pub struct Vm {
-    allocator: Gc,
+    gc: Gc,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: Table,
@@ -25,11 +25,11 @@ impl Vm {
     const STACK_SIZE: usize = Vm::MAX_FRAMES * (std::u8::MAX as usize) + 1;
 
     pub fn new() -> Self {
-        let mut allocator = Gc::new();
-        let init_string = allocator.intern("init".to_owned());
+        let mut gc = Gc::new();
+        let init_string = gc.intern("init".to_owned());
 
         let mut vm = Self {
-            allocator,
+            gc,
             frames: Vec::with_capacity(Vm::MAX_FRAMES),
             stack: Vec::with_capacity(Vm::STACK_SIZE),
             globals: Table::new(),
@@ -43,7 +43,7 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
-        let function = compile(code, &mut self.allocator)?;
+        let function = compile(code, &mut self.gc)?;
         self.push(Value::Function(function));
         let closure = self.alloc(Closure::new(function));
         self.frames.push(CallFrame::new(closure, 0));
@@ -69,7 +69,7 @@ impl Vm {
     }
 
     fn define_native(&mut self, name: &str, native: NativeFn) {
-        let name = self.allocator.intern(name.to_owned());
+        let name = self.gc.intern(name.to_owned());
         self.globals.insert(name, Value::NativeFunction(native));
     }
 
@@ -107,14 +107,14 @@ impl Vm {
     // PERF: Investigate unsafe
     fn current_chunk(&self) -> &Chunk {
         let closure = self.current_closure();
-        let function = self.allocator.deref(closure.function);
+        let function = self.gc.deref(closure.function);
         &function.chunk
     }
 
     // PERF: Investigate unsafe
     fn current_closure(&self) -> &Closure {
         let closure = self.current_frame().closure;
-        let closure = self.allocator.deref(closure);
+        let closure = self.gc.deref(closure);
         &closure
     }
 
@@ -125,7 +125,7 @@ impl Vm {
             #[cfg(feature = "debug_trace_execution")]
             {
                 let dis = crate::chunk::Disassembler::new(
-                    &self.allocator,
+                    &self.gc,
                     self.current_chunk(),
                     Some(&self.stack),
                 );
@@ -143,8 +143,8 @@ impl Vm {
                         }
 
                         (Value::String(a), Value::String(b)) => {
-                            let a = self.allocator.deref(*a);
-                            let b = self.allocator.deref(*b);
+                            let a = self.gc.deref(*a);
+                            let b = self.gc.deref(*b);
                             let result = format!("{}{}", a, b);
                             let result = self.intern(result);
                             let value = Value::String(result);
@@ -173,11 +173,11 @@ impl Vm {
                 Instruction::Closure(constant) => {
                     let function = self.current_chunk().read_constant(constant);
                     if let Value::Function(function) = function {
-                        let upvalue_count = self.allocator.deref(function).upvalues.len();
+                        let upvalue_count = self.gc.deref(function).upvalues.len();
                         let mut closure = Closure::new(function);
 
                         for i in 0..upvalue_count {
-                            let upvalue = self.allocator.deref(function).upvalues[i];
+                            let upvalue = self.gc.deref(function).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
                                 let location = self.current_frame().slot + upvalue.index as usize;
                                 self.capture_upvalue(location)
@@ -217,7 +217,7 @@ impl Vm {
                     match self.globals.get(&global_name) {
                         Some(&value) => self.push(value),
                         None => {
-                            let global_name = self.allocator.deref(global_name);
+                            let global_name = self.gc.deref(global_name);
                             let msg = format!("Undefined variable '{}'.", global_name);
                             return self.runtime_error(&msg);
                         }
@@ -230,7 +230,7 @@ impl Vm {
                 }
                 Instruction::GetProperty(constant) => {
                     if let Value::Instance(instance) = self.peek(0) {
-                        let instance = self.allocator.deref(instance);
+                        let instance = self.gc.deref(instance);
                         let class = instance.class;
                         let property_name = self.current_chunk().read_string(constant);
                         let value = instance.get_property(property_name);
@@ -258,7 +258,7 @@ impl Vm {
                 Instruction::GetUpvalue(slot) => {
                     let value = {
                         let upvalue = self.current_closure().upvalues[slot as usize];
-                        let upvalue = self.allocator.deref(upvalue);
+                        let upvalue = self.gc.deref(upvalue);
                         if let Some(value) = upvalue.closed {
                             value
                         } else {
@@ -271,9 +271,9 @@ impl Vm {
                 Instruction::Inherit => {
                     let pair = (self.peek(0), self.peek(1));
                     if let (Value::Class(subclass), Value::Class(superclass)) = pair {
-                        let superclass = self.allocator.deref(superclass);
+                        let superclass = self.gc.deref(superclass);
                         let methods = superclass.methods.clone();
-                        let mut subclass = self.allocator.deref_mut(subclass);
+                        let mut subclass = self.gc.deref_mut(subclass);
                         subclass.methods = methods;
                         self.pop();
                     } else {
@@ -319,7 +319,7 @@ impl Vm {
                 }
                 Instruction::Print => {
                     let value = self.pop();
-                    let formatter = GcTraceFormatter::new(value, &self.allocator);
+                    let formatter = GcTraceFormatter::new(value, &self.gc);
                     println!("{}", formatter);
                 }
                 Instruction::Return => {
@@ -339,7 +339,7 @@ impl Vm {
                     let value = self.peek(0);
                     if self.globals.insert(global_name, value).is_none() {
                         self.globals.remove(&global_name);
-                        let s = self.allocator.deref(global_name);
+                        let s = self.gc.deref(global_name);
                         let msg = format!("Undefined variable '{}'.", s);
                         return self.runtime_error(&msg);
                     }
@@ -353,7 +353,7 @@ impl Vm {
                     if let Value::Instance(instance) = self.peek(1) {
                         let property_name = self.current_chunk().read_string(constant);
                         let value = self.pop();
-                        let instance = self.allocator.deref_mut(instance);
+                        let instance = self.gc.deref_mut(instance);
                         instance.set_property(property_name, value);
                         self.pop();
                         self.push(value);
@@ -364,7 +364,7 @@ impl Vm {
                 Instruction::SetUpvalue(slot) => {
                     let upvalue = self.current_closure().upvalues[slot as usize];
                     let value = self.peek(0);
-                    let mut upvalue = self.allocator.deref_mut(upvalue);
+                    let mut upvalue = self.gc.deref_mut(upvalue);
                     if upvalue.closed.is_none() {
                         self.stack[upvalue.location] = value;
                     } else {
@@ -388,7 +388,7 @@ impl Vm {
         let callee = self.peek(arg_count);
         match callee {
             Value::BoundMethod(bound) => {
-                let bound = self.allocator.deref(bound);
+                let bound = self.gc.deref(bound);
                 let method = bound.method;
                 let receiver = bound.receiver;
                 self.set_at(arg_count, receiver);
@@ -398,7 +398,7 @@ impl Vm {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
                 self.set_at(arg_count, Value::Instance(instance));
-                let class = self.allocator.deref(class);
+                let class = self.gc.deref(class);
                 if let Some(&initializer) = class.methods.get(&self.init_string) {
                     if let Value::Closure(initializer) = initializer {
                         return self.call(initializer, arg_count);
@@ -423,8 +423,8 @@ impl Vm {
     }
 
     fn call(&mut self, closure_ref: GcRef<Closure>, arg_count: usize) -> Result<(), LoxError> {
-        let closure = self.allocator.deref(closure_ref);
-        let function = self.allocator.deref(closure.function);
+        let closure = self.gc.deref(closure_ref);
+        let function = self.gc.deref(closure.function);
         if arg_count != function.arity {
             let msg = format!(
                 "Expected {} arguments but got {}.",
@@ -443,7 +443,7 @@ impl Vm {
     fn invoke(&mut self, name: GcRef<String>, arg_count: usize) -> Result<(), LoxError> {
         let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
-            let instance = self.allocator.deref(instance);
+            let instance = self.gc.deref(instance);
             if let Some(field) = instance.get_property(name) {
                 self.set_at(arg_count, field);
                 self.call_value(arg_count)
@@ -462,7 +462,7 @@ impl Vm {
         name: GcRef<String>,
         arg_count: usize,
     ) -> Result<(), LoxError> {
-        let class = self.allocator.deref(class);
+        let class = self.gc.deref(class);
         if let Some(&method) = class.methods.get(&name) {
             if let Value::Closure(closure) = method {
                 self.call(closure, arg_count)
@@ -470,14 +470,14 @@ impl Vm {
                 panic!("Got method that is not closure!")
             }
         } else {
-            let name = self.allocator.deref(name);
+            let name = self.gc.deref(name);
             let msg = format!("Undefined property '{}'.", name);
             self.runtime_error(&msg)
         }
     }
 
     fn bind_method(&mut self, class: GcRef<LoxClass>, name: GcRef<String>) -> Result<(), LoxError> {
-        let class = self.allocator.deref(class);
+        let class = self.gc.deref(class);
         if let Some(method) = class.methods.get(&name) {
             let receiver = self.peek(0);
             let method = match method {
@@ -490,7 +490,7 @@ impl Vm {
             self.push(Value::BoundMethod(bound));
             Ok(())
         } else {
-            let name = self.allocator.deref(name);
+            let name = self.gc.deref(name);
             let msg = format!("Undefined property '{}'.", name);
             self.runtime_error(&msg)
         }
@@ -498,7 +498,7 @@ impl Vm {
 
     fn capture_upvalue(&mut self, location: usize) -> GcRef<ObjUpvalue> {
         for &upvalue_ref in &self.open_upvalues {
-            let upvalue = self.allocator.deref(upvalue_ref);
+            let upvalue = self.gc.deref(upvalue_ref);
             if upvalue.location == location {
                 return upvalue_ref;
             }
@@ -512,7 +512,7 @@ impl Vm {
         let mut i = 0;
         while i != self.open_upvalues.len() {
             let upvalue = self.open_upvalues[i];
-            let upvalue = self.allocator.deref_mut(upvalue);
+            let upvalue = self.gc.deref_mut(upvalue);
             if upvalue.location >= last {
                 // PERF: Remove is expensive
                 self.open_upvalues.remove(i);
@@ -527,7 +527,7 @@ impl Vm {
     fn define_method(&mut self, name: GcRef<String>) {
         let method = self.peek(0);
         if let Value::Class(class) = self.peek(1) {
-            let class = self.allocator.deref_mut(class);
+            let class = self.gc.deref_mut(class);
             class.methods.insert(name, method);
             self.pop();
         } else {
@@ -537,21 +537,21 @@ impl Vm {
 
     fn alloc<T: GcTrace + 'static + Debug>(&mut self, object: T) -> GcRef<T> {
         self.mark_and_sweep();
-        self.allocator.alloc(object)
+        self.gc.alloc(object)
     }
 
     fn intern(&mut self, name: String) -> GcRef<String> {
         self.mark_and_sweep();
-        self.allocator.intern(name)
+        self.gc.intern(name)
     }
 
     fn mark_and_sweep(&mut self) {
-        if self.allocator.should_gc() {
+        if self.gc.should_gc() {
             #[cfg(feature = "debug_log_gc")]
             println!("-- gc begin");
 
             self.mark_roots();
-            self.allocator.collect_garbage();
+            self.gc.collect_garbage();
 
             #[cfg(feature = "debug_log_gc")]
             println!("-- gc end");
@@ -560,19 +560,19 @@ impl Vm {
 
     fn mark_roots(&mut self) {
         for &value in &self.stack {
-            self.allocator.mark_value(value);
+            self.gc.mark_value(value);
         }
 
         for frame in &self.frames {
-            self.allocator.mark_object(frame.closure)
+            self.gc.mark_object(frame.closure)
         }
 
         for &upvalue in &self.open_upvalues {
-            self.allocator.mark_object(upvalue);
+            self.gc.mark_object(upvalue);
         }
 
-        self.allocator.mark_table(&self.globals);
-        self.allocator.mark_object(self.init_string);
+        self.gc.mark_table(&self.globals);
+        self.gc.mark_object(self.init_string);
     }
 }
 
@@ -601,7 +601,7 @@ fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
     let mut terms: Vec<String> = vec![];
 
     for &arg in args.iter() {
-        let formatter = GcTraceFormatter::new(arg, &vm.allocator);
+        let formatter = GcTraceFormatter::new(arg, &vm.gc);
         let term = format!("{}", formatter);
         terms.push(term);
     }

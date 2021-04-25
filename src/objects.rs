@@ -8,13 +8,13 @@ use crate::{
 };
 
 impl GcTrace for String {
-    fn format(&self, f: &mut fmt::Formatter, _allocator: &Gc) -> fmt::Result {
+    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
         write!(f, "{}", self)
     }
     fn size(&self) -> usize {
         mem::size_of::<String>() + self.as_bytes().len()
     }
-    fn trace(&self, _allocator: &mut Gc) {}
+    fn trace(&self, _gc: &mut Gc) {}
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -64,8 +64,8 @@ impl LoxFunction {
 }
 
 impl GcTrace for LoxFunction {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
-        let name = allocator.deref(self.name);
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+        let name = gc.deref(self.name);
         if name.is_empty() {
             write!(f, "<script>")
         } else {
@@ -79,10 +79,10 @@ impl GcTrace for LoxFunction {
             + self.chunk.constants.capacity() * mem::size_of::<Value>()
             + self.chunk.constants.capacity() * mem::size_of::<usize>()
     }
-    fn trace(&self, allocator: &mut Gc) {
-        allocator.mark_object(self.name);
+    fn trace(&self, gc: &mut Gc) {
+        gc.mark_object(self.name);
         for &constant in &self.chunk.constants {
-            allocator.mark_value(constant);
+            gc.mark_value(constant);
         }
     }
     fn as_any(&self) -> &dyn Any {
@@ -109,15 +109,15 @@ impl ObjUpvalue {
 }
 
 impl GcTrace for ObjUpvalue {
-    fn format(&self, f: &mut fmt::Formatter, _allocator: &Gc) -> fmt::Result {
+    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
         write!(f, "upvalue")
     }
     fn size(&self) -> usize {
         mem::size_of::<ObjUpvalue>()
     }
-    fn trace(&self, allocator: &mut Gc) {
+    fn trace(&self, gc: &mut Gc) {
         if let Some(obj) = self.closed {
-            allocator.mark_value(obj)
+            gc.mark_value(obj)
         }
     }
     fn as_any(&self) -> &dyn Any {
@@ -144,17 +144,17 @@ impl Closure {
 }
 
 impl GcTrace for Closure {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
-        let function = allocator.deref(self.function);
-        function.format(f, allocator)
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+        let function = gc.deref(self.function);
+        function.format(f, gc)
     }
     fn size(&self) -> usize {
         mem::size_of::<Closure>() + self.upvalues.capacity() * mem::size_of::<GcRef<ObjUpvalue>>()
     }
-    fn trace(&self, allocator: &mut Gc) {
-        allocator.mark_object(self.function);
+    fn trace(&self, gc: &mut Gc) {
+        gc.mark_object(self.function);
         for &upvalue in &self.upvalues {
-            allocator.mark_object(upvalue);
+            gc.mark_object(upvalue);
         }
     }
     fn as_any(&self) -> &dyn Any {
@@ -181,16 +181,16 @@ impl LoxClass {
 }
 
 impl GcTrace for LoxClass {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
-        let name = allocator.deref(self.name);
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+        let name = gc.deref(self.name);
         write!(f, "{}", name)
     }
     fn size(&self) -> usize {
         mem::size_of::<LoxClass>()
     }
-    fn trace(&self, allocator: &mut Gc) {
-        allocator.mark_object(self.name);
-        allocator.mark_table(&self.methods);
+    fn trace(&self, gc: &mut Gc) {
+        gc.mark_object(self.name);
+        gc.mark_table(&self.methods);
     }
     fn as_any(&self) -> &dyn Any {
         self
@@ -225,18 +225,18 @@ impl Instance {
 }
 
 impl GcTrace for Instance {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
-        let class = allocator.deref(self.class);
-        let name = allocator.deref(class.name);
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+        let class = gc.deref(self.class);
+        let name = gc.deref(class.name);
         write!(f, "{} instance", name)
     }
     fn size(&self) -> usize {
         mem::size_of::<Instance>()
             + self.fields.capacity() * (mem::size_of::<GcRef<String>>() + mem::size_of::<Value>())
     }
-    fn trace(&self, allocator: &mut Gc) {
-        allocator.mark_object(self.class);
-        allocator.mark_table(&self.fields);
+    fn trace(&self, gc: &mut Gc) {
+        gc.mark_object(self.class);
+        gc.mark_table(&self.fields);
     }
     fn as_any(&self) -> &dyn Any {
         self
@@ -259,16 +259,16 @@ impl BoundMethod {
 }
 
 impl GcTrace for BoundMethod {
-    fn format(&self, f: &mut fmt::Formatter, allocator: &Gc) -> fmt::Result {
-        let method = allocator.deref(self.method);
-        method.format(f, allocator)
+    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+        let method = gc.deref(self.method);
+        method.format(f, gc)
     }
     fn size(&self) -> usize {
         mem::size_of::<BoundMethod>()
     }
-    fn trace(&self, allocator: &mut Gc) {
-        allocator.mark_value(self.receiver);
-        allocator.mark_object(self.method);
+    fn trace(&self, gc: &mut Gc) {
+        gc.mark_value(self.receiver);
+        gc.mark_object(self.method);
     }
     fn as_any(&self) -> &dyn Any {
         self
