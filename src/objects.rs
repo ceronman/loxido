@@ -44,12 +44,23 @@ pub struct Upvalue {
     pub is_local: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LoxFunction {
     pub arity: usize,
     pub chunk: Chunk,
     pub name: Reference<String>,
     pub upvalues: Vec<Upvalue>,
+}
+
+impl LoxFunction {
+    pub fn new(name: Reference<String>) -> Self {
+        Self {
+            arity: 0,
+            chunk: Chunk::new(),
+            name,
+            upvalues: Vec::new(),
+        }
+    }
 }
 
 impl Trace for LoxFunction {

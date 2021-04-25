@@ -101,10 +101,10 @@ struct Compiler<'sourcecode> {
 impl<'sourcecode> Compiler<'sourcecode> {
     const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
-    fn new(enclosing: Option<Box<Compiler<'sourcecode>>>, kind: FunctionType) -> Box<Self> {
+    fn new(function_name: Reference<String>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
-            enclosing,
-            function: LoxFunction::default(),
+            enclosing: None,
+            function: LoxFunction::new(function_name),
             function_type: kind,
             locals: Vec::with_capacity(Compiler::LOCAL_COUNT),
             scope_depth: 0,
@@ -257,9 +257,11 @@ impl<'sourcecode> Parser<'sourcecode> {
         rule(Error, None, None, P::None);
         rule(Eof, None, None, P::None);
 
+        let function_name = allocator.intern("script".to_owned());
+
         Parser {
             scanner: Scanner::new(code),
-            compiler: Compiler::new(None, FunctionType::Script),
+            compiler: Compiler::new(function_name, FunctionType::Script),
             class_compiler: None,
             allocator,
             current: Token::synthetic(""),
@@ -374,11 +376,10 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 
     fn push_compiler(&mut self, kind: FunctionType) {
-        let new_compiler = Compiler::new(None, kind);
+        let function_name = self.allocator.intern(self.previous.lexeme.to_owned());
+        let new_compiler = Compiler::new(function_name, kind);
         let old_compiler = mem::replace(&mut self.compiler, new_compiler);
         self.compiler.enclosing = Some(old_compiler);
-        let function_name = self.allocator.intern(self.previous.lexeme.to_owned());
-        self.compiler.function.name = function_name;
     }
 
     fn pop_compiler(&mut self) -> LoxFunction {

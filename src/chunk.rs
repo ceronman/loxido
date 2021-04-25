@@ -115,7 +115,7 @@ pub enum Instruction {
     True,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instruction>,
     pub constants: Vec<Value>,
@@ -123,6 +123,13 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    pub fn new() -> Self {
+        Self {
+            code: Vec::new(),
+            constants: Vec::new(),
+            lines: Vec::new(),
+        }
+    }
     pub fn write(&mut self, instruction: Instruction, line: usize) -> usize {
         self.code.push(instruction);
         self.lines.push(line);

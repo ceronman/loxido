@@ -45,7 +45,6 @@ impl Trace for Empty {
     }
 }
 
-// TODO: Make T: Trace?
 pub struct Reference<T: Trace> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
@@ -61,30 +60,12 @@ impl<T: Trace> Clone for Reference<T> {
     }
 }
 
-impl<T: Trace> Default for Reference<T> {
-    fn default() -> Self {
-        Reference {
-            index: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T: Trace> fmt::Display for Reference<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ref({}:{})", self.index, short_type_name::<T>())
-    }
-}
-
 impl<T: Trace> Debug for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ref({}:{})", self.index, short_type_name::<T>())
+        let full_name = type_name::<T>();
+        full_name.split("::").last().unwrap();
+        write!(f, "ref({}:{})", self.index, full_name)
     }
-}
-
-fn short_type_name<T: Trace>() -> &'static str {
-    let full_name = type_name::<T>();
-    full_name.split("::").last().unwrap()
 }
 
 impl<T: Trace> PartialEq for Reference<T> {
