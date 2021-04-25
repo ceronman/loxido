@@ -46,22 +46,22 @@ impl Trace for Empty {
 }
 
 // TODO: Make T: Trace?
-pub struct Reference<T> {
+pub struct Reference<T: Trace> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> Copy for Reference<T> {}
-impl<T> Eq for Reference<T> {}
+impl<T: Trace> Copy for Reference<T> {}
+impl<T: Trace> Eq for Reference<T> {}
 
-impl<T> Clone for Reference<T> {
+impl<T: Trace> Clone for Reference<T> {
     #[inline]
     fn clone(&self) -> Reference<T> {
         *self
     }
 }
 
-impl<T> Default for Reference<T> {
+impl<T: Trace> Default for Reference<T> {
     fn default() -> Self {
         Reference {
             index: 0,
@@ -70,24 +70,24 @@ impl<T> Default for Reference<T> {
     }
 }
 
-impl<T: Any> fmt::Display for Reference<T> {
+impl<T: Trace> fmt::Display for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ref({}:{})", self.index, short_type_name::<T>())
     }
 }
 
-impl<T: Any> Debug for Reference<T> {
+impl<T: Trace> Debug for Reference<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ref({}:{})", self.index, short_type_name::<T>())
     }
 }
 
-fn short_type_name<T: Any>() -> &'static str {
+fn short_type_name<T: Trace>() -> &'static str {
     let full_name = type_name::<T>();
     full_name.split("::").last().unwrap()
 }
 
-impl<T> PartialEq for Reference<T> {
+impl<T: Trace> PartialEq for Reference<T> {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index
     }
@@ -189,7 +189,7 @@ impl Allocator {
         }
     }
 
-    pub fn deref<T: Any>(&self, reference: Reference<T>) -> &T {
+    pub fn deref<T: Trace + 'static>(&self, reference: Reference<T>) -> &T {
         self.objects[reference.index]
             .obj
             .as_any()
@@ -198,7 +198,7 @@ impl Allocator {
         // .expect(&format!("Reference {} not found", reference.index))
     }
 
-    pub fn deref_mut<T: Any>(&mut self, reference: Reference<T>) -> &mut T {
+    pub fn deref_mut<T: Trace + 'static>(&mut self, reference: Reference<T>) -> &mut T {
         self.objects[reference.index]
             .obj
             .as_any_mut()
@@ -254,7 +254,7 @@ impl Allocator {
         value.trace(self);
     }
 
-    pub fn mark_object<T: Any + Debug>(&mut self, obj: Reference<T>) {
+    pub fn mark_object<T: Trace>(&mut self, obj: Reference<T>) {
         if self.objects[obj.index].is_marked {
             return;
         }
