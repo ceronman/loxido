@@ -6,7 +6,7 @@ use crate::{
     chunk::{Chunk, Instruction, Table, Value},
     compiler::compile,
     error::LoxError,
-    function::{BoundMethod, Closure, Instance, LoxClass, NativeFn, ObjUpvalue},
+    objects::{BoundMethod, Closure, Instance, LoxClass, NativeFn, ObjUpvalue},
 };
 use std::fmt;
 

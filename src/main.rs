@@ -2,7 +2,7 @@ mod allocator;
 mod chunk;
 mod compiler;
 mod error;
-mod function;
+mod objects;
 mod scanner;
 mod vm;
 

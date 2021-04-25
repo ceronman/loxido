@@ -2,8 +2,8 @@ use crate::{
     allocator::{Allocator, Reference},
     chunk::{Instruction, Value},
     error::LoxError,
-    function::LoxFunction,
-    function::Upvalue,
+    objects::LoxFunction,
+    objects::Upvalue,
     scanner::{Scanner, Token, TokenType},
 };
 use std::collections::HashMap;
