@@ -82,15 +82,15 @@ impl hash::Hash for GcRef<String> {
 
 struct Empty;
 
-struct ObjHeader {
+struct GcObjectHeader {
     is_marked: bool,
     size: usize,
     obj: Box<dyn GcTrace>,
 }
 
-impl ObjHeader {
+impl GcObjectHeader {
     fn empty() -> Self {
-        ObjHeader {
+        GcObjectHeader {
             is_marked: false,
             size: 0,
             obj: Box::new(Empty {}),
@@ -102,13 +102,13 @@ pub struct Gc {
     bytes_allocated: usize,
     next_gc: usize,
     free_slots: Vec<usize>,
-    objects: Vec<ObjHeader>,
+    objects: Vec<GcObjectHeader>,
     strings: HashMap<String, GcRef<String>>,
     grey_stack: VecDeque<usize>,
 }
 
 impl Gc {
-    const GC_HEAP_GROW_FACTOR: usize = 2;
+    const HEAP_GROW_FACTOR: usize = 2;
 
     pub fn new() -> Self {
         Gc {
@@ -117,7 +117,7 @@ impl Gc {
             free_slots: Vec::new(),
             objects: Vec::new(),
             strings: HashMap::new(),
-            grey_stack: VecDeque::new(), // TODO: Add proper capacities
+            grey_stack: VecDeque::new(),
         }
     }
 
@@ -128,9 +128,9 @@ impl Gc {
             .into_iter()
             .take(32)
             .collect::<String>();
-        let size = object.size() + mem::size_of::<ObjHeader>();
+        let size = object.size() + mem::size_of::<GcObjectHeader>();
         self.bytes_allocated += size;
-        let entry = ObjHeader {
+        let entry = GcObjectHeader {
             is_marked: false,
             size,
             obj: Box::new(object),
@@ -175,8 +175,7 @@ impl Gc {
             .obj
             .as_any()
             .downcast_ref()
-            .unwrap()
-        // .expect(&format!("Reference {} not found", reference.index))
+            .unwrap_or_else(|| panic!("Reference {} not found", reference.index))
     }
 
     pub fn deref_mut<T: GcTrace + 'static>(&mut self, reference: GcRef<T>) -> &mut T {
@@ -184,14 +183,13 @@ impl Gc {
             .obj
             .as_any_mut()
             .downcast_mut()
-            .unwrap()
-        // .expect(&format!("Reference {} not found", reference.index))
+            .unwrap_or_else(|| panic!("Reference {} not found", reference.index))
     }
 
     fn free(&mut self, index: usize) {
         #[cfg(feature = "debug_log_gc")]
         println!("free (id:{})", index,);
-        let old = mem::replace(&mut self.objects[index], ObjHeader::empty());
+        let old = mem::replace(&mut self.objects[index], GcObjectHeader::empty());
         self.bytes_allocated -= old.size;
         self.free_slots.push(index)
     }
@@ -203,7 +201,7 @@ impl Gc {
         self.trace_references();
         self.remove_white_strings();
         self.sweep();
-        self.next_gc = self.bytes_allocated * Gc::GC_HEAP_GROW_FACTOR;
+        self.next_gc = self.bytes_allocated * Gc::HEAP_GROW_FACTOR;
 
         #[cfg(feature = "debug_log_gc")]
         println!(
@@ -225,8 +223,8 @@ impl Gc {
         #[cfg(feature = "debug_log_gc")]
         println!("blacken(id:{})", index);
 
-        // TODO: Think how to avoid this trick to please the borrow checker mig
-        let header = mem::replace(&mut self.objects[index], ObjHeader::empty());
+        // Hack to trick the borrow checker to be able to call trace on an element.
+        let header = mem::replace(&mut self.objects[index], GcObjectHeader::empty());
         header.obj.trace(self);
         self.objects[index] = header;
     }
