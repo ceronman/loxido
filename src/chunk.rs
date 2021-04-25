@@ -163,16 +163,8 @@ pub struct Disassembler<'vm> {
 
 #[cfg(feature = "debug_trace_execution")]
 impl<'vm> Disassembler<'vm> {
-    pub fn new(
-        gc: &'vm gc,
-        chunk: &'vm Chunk,
-        stack: Option<&'vm Vec<Value>>,
-    ) -> Self {
-        Disassembler {
-            gc,
-            chunk,
-            stack,
-        }
+    pub fn new(gc: &'vm gc, chunk: &'vm Chunk, stack: Option<&'vm Vec<Value>>) -> Self {
+        Disassembler { gc, chunk, stack }
     }
 
     pub fn disassemble(&self, name: &str) {
@@ -269,10 +261,7 @@ impl<'vm> Disassembler<'vm> {
         if let Some(stack) = self.stack {
             print!(" S: ");
             for &value in stack.iter() {
-                print!(
-                    "[{}]",
-                    crate::gc::TraceFormatter::new(value, self.gc)
-                );
+                print!("[{}]", crate::gc::TraceFormatter::new(value, self.gc));
             }
             println!();
         }
