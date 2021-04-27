@@ -39,20 +39,20 @@ impl PartialEq for NativeFunction {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Upvalue {
+pub struct FunctionUpvalue {
     pub index: u8,
     pub is_local: bool,
 }
 
 #[derive(Debug)]
-pub struct LoxFunction {
+pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
     pub name: GcRef<String>,
-    pub upvalues: Vec<Upvalue>,
+    pub upvalues: Vec<FunctionUpvalue>,
 }
 
-impl LoxFunction {
+impl Function {
     pub fn new(name: GcRef<String>) -> Self {
         Self {
             arity: 0,
@@ -63,7 +63,7 @@ impl LoxFunction {
     }
 }
 
-impl GcTrace for LoxFunction {
+impl GcTrace for Function {
     fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
         let name = gc.deref(self.name);
         if name.is_empty() {
@@ -73,8 +73,8 @@ impl GcTrace for LoxFunction {
         }
     }
     fn size(&self) -> usize {
-        mem::size_of::<LoxFunction>()
-            + self.upvalues.capacity() * mem::size_of::<Upvalue>()
+        mem::size_of::<Function>()
+            + self.upvalues.capacity() * mem::size_of::<FunctionUpvalue>()
             + self.chunk.code.capacity() * mem::size_of::<Instruction>()
             + self.chunk.constants.capacity() * mem::size_of::<Value>()
             + self.chunk.constants.capacity() * mem::size_of::<usize>()
@@ -94,26 +94,26 @@ impl GcTrace for LoxFunction {
 }
 
 #[derive(Debug)]
-pub struct ObjUpvalue {
-    pub location: usize, // TODO: Make this a proper type
+pub struct Upvalue {
+    pub location: usize,
     pub closed: Option<Value>,
 }
 
-impl ObjUpvalue {
+impl Upvalue {
     pub fn new(location: usize) -> Self {
-        ObjUpvalue {
+        Upvalue {
             location,
             closed: None,
         }
     }
 }
 
-impl GcTrace for ObjUpvalue {
+impl GcTrace for Upvalue {
     fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
         write!(f, "upvalue")
     }
     fn size(&self) -> usize {
-        mem::size_of::<ObjUpvalue>()
+        mem::size_of::<Upvalue>()
     }
     fn trace(&self, gc: &mut Gc) {
         if let Some(obj) = self.closed {
@@ -130,16 +130,16 @@ impl GcTrace for ObjUpvalue {
 
 #[derive(Debug)]
 pub struct Closure {
-    pub function: GcRef<LoxFunction>,
-    pub upvalues: Vec<GcRef<ObjUpvalue>>,
+    pub function: GcRef<Function>,
+    pub upvalues: Vec<GcRef<Upvalue>>,
 }
 
 impl Closure {
-    pub fn new(function: GcRef<LoxFunction>) -> Self {
+    pub fn new(function: GcRef<Function>) -> Self {
         Closure {
             function,
             upvalues: Vec::new(),
-        } // TODO: use .with_capacity
+        }
     }
 }
 
@@ -149,7 +149,7 @@ impl GcTrace for Closure {
         function.format(f, gc)
     }
     fn size(&self) -> usize {
-        mem::size_of::<Closure>() + self.upvalues.capacity() * mem::size_of::<GcRef<ObjUpvalue>>()
+        mem::size_of::<Closure>() + self.upvalues.capacity() * mem::size_of::<GcRef<Upvalue>>()
     }
     fn trace(&self, gc: &mut Gc) {
         gc.mark_object(self.function);
@@ -166,27 +166,27 @@ impl GcTrace for Closure {
 }
 
 #[derive(Debug)]
-pub struct LoxClass {
+pub struct Class {
     pub name: GcRef<String>,
     pub methods: Table,
 }
 
-impl LoxClass {
+impl Class {
     pub fn new(name: GcRef<String>) -> Self {
-        LoxClass {
+        Class {
             name,
             methods: Table::new(),
         }
     }
 }
 
-impl GcTrace for LoxClass {
+impl GcTrace for Class {
     fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
         let name = gc.deref(self.name);
         write!(f, "{}", name)
     }
     fn size(&self) -> usize {
-        mem::size_of::<LoxClass>()
+        mem::size_of::<Class>()
     }
     fn trace(&self, gc: &mut Gc) {
         gc.mark_object(self.name);
@@ -202,12 +202,12 @@ impl GcTrace for LoxClass {
 
 #[derive(Debug)]
 pub struct Instance {
-    pub class: GcRef<LoxClass>,
+    pub class: GcRef<Class>,
     pub fields: Table,
 }
 
 impl Instance {
-    pub fn new(class: GcRef<LoxClass>) -> Self {
+    pub fn new(class: GcRef<Class>) -> Self {
         Instance {
             class,
             fields: Table::new(),

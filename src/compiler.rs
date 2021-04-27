@@ -2,8 +2,8 @@ use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
     gc::{Gc, GcRef},
-    objects::LoxFunction,
-    objects::Upvalue,
+    objects::Function,
+    objects::FunctionUpvalue,
     scanner::{Scanner, Token, TokenType},
 };
 use std::collections::HashMap;
@@ -92,7 +92,7 @@ pub enum FunctionType {
 
 struct Compiler<'sourcecode> {
     enclosing: Option<Box<Compiler<'sourcecode>>>,
-    function: LoxFunction,
+    function: Function,
     function_type: FunctionType,
     locals: Vec<Local<'sourcecode>>,
     scope_depth: i32,
@@ -104,7 +104,7 @@ impl<'sourcecode> Compiler<'sourcecode> {
     fn new(function_name: GcRef<String>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
             enclosing: None,
-            function: LoxFunction::new(function_name),
+            function: Function::new(function_name),
             function_type: kind,
             locals: Vec::with_capacity(Compiler::LOCAL_COUNT),
             scope_depth: 0,
@@ -156,7 +156,7 @@ impl<'sourcecode> Compiler<'sourcecode> {
             return 0;
         }
 
-        let upvalue = Upvalue { index, is_local };
+        let upvalue = FunctionUpvalue { index, is_local };
         self.function.upvalues.push(upvalue);
         count as u8
     }
@@ -273,7 +273,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         }
     }
 
-    fn compile(mut self) -> Result<GcRef<LoxFunction>, LoxError> {
+    fn compile(mut self) -> Result<GcRef<Function>, LoxError> {
         self.advance();
 
         while !self.matches(TokenType::Eof) {
@@ -378,7 +378,7 @@ impl<'sourcecode> Parser<'sourcecode> {
         self.compiler.enclosing = Some(old_compiler);
     }
 
-    fn pop_compiler(&mut self) -> LoxFunction {
+    fn pop_compiler(&mut self) -> Function {
         self.emit_return();
         match self.compiler.enclosing.take() {
             Some(enclosing) => {
@@ -1015,7 +1015,7 @@ impl<'sourcecode> Parser<'sourcecode> {
     }
 }
 
-pub fn compile(code: &str, gc: &mut Gc) -> Result<GcRef<LoxFunction>, LoxError> {
+pub fn compile(code: &str, gc: &mut Gc) -> Result<GcRef<Function>, LoxError> {
     let parser = Parser::new(code, gc);
     parser.compile()
 }

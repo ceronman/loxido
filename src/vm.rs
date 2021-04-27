@@ -6,7 +6,7 @@ use crate::{
     compiler::compile,
     error::LoxError,
     gc::{Gc, GcRef, GcTrace, GcTraceFormatter},
-    objects::{BoundMethod, Closure, Instance, LoxClass, NativeFunction, ObjUpvalue},
+    objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
 use std::fmt;
 
@@ -15,7 +15,7 @@ pub struct Vm {
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: Table,
-    open_upvalues: Vec<GcRef<ObjUpvalue>>,
+    open_upvalues: Vec<GcRef<Upvalue>>,
     init_string: GcRef<String>,
     start_time: ProcessTime,
 }
@@ -161,7 +161,7 @@ impl Vm {
                 }
                 Instruction::Class(constant) => {
                     let class_name = self.current_chunk().read_string(constant);
-                    let class = LoxClass::new(class_name);
+                    let class = Class::new(class_name);
                     let class = self.alloc(class);
                     self.push(Value::Class(class));
                 }
@@ -458,7 +458,7 @@ impl Vm {
 
     fn invoke_from_class(
         &mut self,
-        class: GcRef<LoxClass>,
+        class: GcRef<Class>,
         name: GcRef<String>,
         arg_count: usize,
     ) -> Result<(), LoxError> {
@@ -476,7 +476,7 @@ impl Vm {
         }
     }
 
-    fn bind_method(&mut self, class: GcRef<LoxClass>, name: GcRef<String>) -> Result<(), LoxError> {
+    fn bind_method(&mut self, class: GcRef<Class>, name: GcRef<String>) -> Result<(), LoxError> {
         let class = self.gc.deref(class);
         if let Some(method) = class.methods.get(&name) {
             let receiver = self.peek(0);
@@ -496,14 +496,14 @@ impl Vm {
         }
     }
 
-    fn capture_upvalue(&mut self, location: usize) -> GcRef<ObjUpvalue> {
+    fn capture_upvalue(&mut self, location: usize) -> GcRef<Upvalue> {
         for &upvalue_ref in &self.open_upvalues {
             let upvalue = self.gc.deref(upvalue_ref);
             if upvalue.location == location {
                 return upvalue_ref;
             }
         }
-        let upvalue = ObjUpvalue::new(location);
+        let upvalue = Upvalue::new(location);
         let upvalue = self.alloc(upvalue);
         self.open_upvalues.push(upvalue);
         upvalue
