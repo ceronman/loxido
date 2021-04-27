@@ -24,15 +24,15 @@ impl GcTrace for String {
 }
 
 #[derive(Clone, Copy)]
-pub struct NativeFn(pub fn(&Vm, &[Value]) -> Value);
+pub struct NativeFunction(pub fn(&Vm, &[Value]) -> Value);
 
-impl fmt::Debug for NativeFn {
+impl fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<fn>")
     }
 }
 
-impl PartialEq for NativeFn {
+impl PartialEq for NativeFunction {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self, other)
     }

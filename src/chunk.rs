@@ -1,6 +1,6 @@
 use crate::{
     gc::{Gc, GcRef, GcTrace},
-    objects::{BoundMethod, Closure, Instance, LoxClass, LoxFunction, NativeFn},
+    objects::{BoundMethod, Closure, Instance, LoxClass, LoxFunction, NativeFunction},
 };
 use std::{any::Any, collections::HashMap, fmt};
 
@@ -12,7 +12,7 @@ pub enum Value {
     Closure(GcRef<Closure>),
     Function(GcRef<LoxFunction>),
     Instance(GcRef<Instance>),
-    NativeFunction(NativeFn),
+    NativeFunction(NativeFunction),
     Nil,
     Number(f64),
     String(GcRef<String>),

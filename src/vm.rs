@@ -6,7 +6,7 @@ use crate::{
     compiler::compile,
     error::LoxError,
     gc::{Gc, GcRef, GcTrace, GcTraceFormatter},
-    objects::{BoundMethod, Closure, Instance, LoxClass, NativeFn, ObjUpvalue},
+    objects::{BoundMethod, Closure, Instance, LoxClass, NativeFunction, ObjUpvalue},
 };
 use std::fmt;
 
@@ -37,8 +37,8 @@ impl Vm {
             init_string,
             start_time: ProcessTime::now(),
         };
-        vm.define_native("clock", NativeFn(clock));
-        vm.define_native("panic", NativeFn(lox_panic));
+        vm.define_native("clock", NativeFunction(clock));
+        vm.define_native("panic", NativeFunction(lox_panic));
         vm
     }
 
@@ -68,7 +68,7 @@ impl Vm {
         self.stack[size - 1 - n] = value;
     }
 
-    fn define_native(&mut self, name: &str, native: NativeFn) {
+    fn define_native(&mut self, name: &str, native: NativeFunction) {
         let name = self.gc.intern(name.to_owned());
         self.globals.insert(name, Value::NativeFunction(native));
     }
