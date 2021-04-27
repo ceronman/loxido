@@ -203,7 +203,7 @@ impl GcTrace for LoxClass {
 #[derive(Debug)]
 pub struct Instance {
     pub class: GcRef<LoxClass>,
-    fields: Table,
+    pub fields: Table,
 }
 
 impl Instance {
@@ -212,15 +212,6 @@ impl Instance {
             class,
             fields: Table::new(),
         }
-    }
-
-    // TODO: Move these to Table
-    pub fn get_property(&self, name: GcRef<String>) -> Option<Value> {
-        self.fields.get(&name).copied()
-    }
-
-    pub fn set_property(&mut self, name: GcRef<String>, value: Value) {
-        self.fields.insert(name, value);
     }
 }
 

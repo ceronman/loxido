@@ -233,9 +233,9 @@ impl Vm {
                         let instance = self.gc.deref(instance);
                         let class = instance.class;
                         let property_name = self.current_chunk().read_string(constant);
-                        let value = instance.get_property(property_name);
+                        let value = instance.fields.get(&property_name);
                         match value {
-                            Some(value) => {
+                            Some(&value) => {
                                 self.pop();
                                 self.push(value);
                             }
@@ -354,7 +354,7 @@ impl Vm {
                         let property_name = self.current_chunk().read_string(constant);
                         let value = self.pop();
                         let instance = self.gc.deref_mut(instance);
-                        instance.set_property(property_name, value);
+                        instance.fields.insert(property_name, value);
                         self.pop();
                         self.push(value);
                     } else {
@@ -444,7 +444,7 @@ impl Vm {
         let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
             let instance = self.gc.deref(instance);
-            if let Some(field) = instance.get_property(name) {
+            if let Some(&field) = instance.fields.get(&name) {
                 self.set_at(arg_count, field);
                 self.call_value(arg_count)
             } else {
