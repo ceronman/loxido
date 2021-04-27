@@ -156,14 +156,14 @@ impl Chunk {
 
 #[cfg(feature = "debug_trace_execution")]
 pub struct Disassembler<'vm> {
-    gc: &'vm gc,
+    gc: &'vm Gc,
     chunk: &'vm Chunk,
     stack: Option<&'vm Vec<Value>>,
 }
 
 #[cfg(feature = "debug_trace_execution")]
 impl<'vm> Disassembler<'vm> {
-    pub fn new(gc: &'vm gc, chunk: &'vm Chunk, stack: Option<&'vm Vec<Value>>) -> Self {
+    pub fn new(gc: &'vm Gc, chunk: &'vm Chunk, stack: Option<&'vm Vec<Value>>) -> Self {
         Disassembler { gc, chunk, stack }
     }
 
@@ -234,7 +234,7 @@ impl<'vm> Disassembler<'vm> {
             "{:<16} {:4} ({})",
             instruction,
             constant_index,
-            crate::gc::TraceFormatter::new(value, self.gc)
+            crate::gc::GcTraceFormatter::new(value, self.gc)
         );
     }
 
@@ -252,7 +252,7 @@ impl<'vm> Disassembler<'vm> {
             "{:<16} {:4} ({}) {}",
             instruction,
             constant_index,
-            crate::gc::TraceFormatter::new(value, self.gc),
+            crate::gc::GcTraceFormatter::new(value, self.gc),
             args
         );
     }
@@ -261,7 +261,7 @@ impl<'vm> Disassembler<'vm> {
         if let Some(stack) = self.stack {
             print!(" S: ");
             for &value in stack.iter() {
-                print!("[{}]", crate::gc::TraceFormatter::new(value, self.gc));
+                print!("[{}]", crate::gc::GcTraceFormatter::new(value, self.gc));
             }
             println!();
         }
