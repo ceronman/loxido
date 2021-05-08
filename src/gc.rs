@@ -29,22 +29,6 @@ impl<'gc, T: GcTrace> fmt::Display for GcTraceFormatter<'gc, T> {
     }
 }
 
-impl GcTrace for Empty {
-    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
-        write!(f, "<empty>")
-    }
-    fn size(&self) -> usize {
-        0
-    }
-    fn trace(&self, _gc: &mut Gc) {}
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 pub struct GcRef<T: GcTrace> {
     index: usize,
     _marker: std::marker::PhantomData<T>,
@@ -80,29 +64,17 @@ impl hash::Hash for GcRef<String> {
     }
 }
 
-struct Empty;
-
 struct GcObjectHeader {
     is_marked: bool,
     size: usize,
     obj: Box<dyn GcTrace>,
 }
 
-impl GcObjectHeader {
-    fn empty() -> Self {
-        GcObjectHeader {
-            is_marked: false,
-            size: 0,
-            obj: Box::new(Empty {}),
-        }
-    }
-}
-
 pub struct Gc {
     bytes_allocated: usize,
     next_gc: usize,
     free_slots: Vec<usize>,
-    objects: Vec<GcObjectHeader>,
+    objects: Vec<Option<GcObjectHeader>>,
     strings: HashMap<String, GcRef<String>>,
     grey_stack: VecDeque<usize>,
 }
@@ -137,11 +109,11 @@ impl Gc {
         };
         let index = match self.free_slots.pop() {
             Some(i) => {
-                self.objects[i] = entry;
+                self.objects[i] = Some(entry);
                 i
             }
             None => {
-                self.objects.push(entry);
+                self.objects.push(Some(entry));
                 self.objects.len() - 1
             }
         };
@@ -172,6 +144,8 @@ impl Gc {
 
     pub fn deref<T: GcTrace + 'static>(&self, reference: GcRef<T>) -> &T {
         self.objects[reference.index]
+            .as_ref()
+            .unwrap()
             .obj
             .as_any()
             .downcast_ref()
@@ -180,6 +154,8 @@ impl Gc {
 
     pub fn deref_mut<T: GcTrace + 'static>(&mut self, reference: GcRef<T>) -> &mut T {
         self.objects[reference.index]
+            .as_mut()
+            .unwrap()
             .obj
             .as_any_mut()
             .downcast_mut()
@@ -189,9 +165,12 @@ impl Gc {
     fn free(&mut self, index: usize) {
         #[cfg(feature = "debug_log_gc")]
         println!("free (id:{})", index,);
-        let old = mem::replace(&mut self.objects[index], GcObjectHeader::empty());
-        self.bytes_allocated -= old.size;
-        self.free_slots.push(index)
+        if let Some(old) = self.objects[index].take() {       
+            self.bytes_allocated -= old.size;
+            self.free_slots.push(index)
+        } else {
+            panic!("Double free on {}", index)
+        }
     }
 
     pub fn collect_garbage(&mut self) {
@@ -224,9 +203,9 @@ impl Gc {
         println!("blacken(id:{})", index);
 
         // Hack to trick the borrow checker to be able to call trace on an element.
-        let header = mem::replace(&mut self.objects[index], GcObjectHeader::empty());
-        header.obj.trace(self);
-        self.objects[index] = header;
+        let object = self.objects[index].take();
+        object.as_ref().unwrap().obj.trace(self);
+        self.objects[index] = object;
     }
 
     pub fn mark_value(&mut self, value: Value) {
@@ -234,19 +213,23 @@ impl Gc {
     }
 
     pub fn mark_object<T: GcTrace>(&mut self, obj: GcRef<T>) {
-        if self.objects[obj.index].is_marked {
-            return;
+        if let Some(object) = self.objects[obj.index].as_mut() {
+            if object.is_marked {
+                return;
+            }
+    
+            #[cfg(feature = "debug_log_gc")]
+            println!(
+                "mark(id:{}, type:{}, val:{:?})",
+                obj.index,
+                type_name::<T>(),
+                obj
+            );
+            object.is_marked = true;
+            self.grey_stack.push_back(obj.index);
+        } else {
+            panic!("Marking already disposed object {}", obj.index)
         }
-
-        #[cfg(feature = "debug_log_gc")]
-        println!(
-            "mark(id:{}, type:{}, val:{:?})",
-            obj.index,
-            type_name::<T>(),
-            obj
-        );
-        self.objects[obj.index].is_marked = true;
-        self.grey_stack.push_back(obj.index);
     }
 
     pub fn mark_table(&mut self, table: &Table) {
@@ -268,18 +251,12 @@ impl Gc {
 
     fn sweep(&mut self) {
         for i in 0..self.objects.len() {
-            if self.objects[i]
-                .obj
-                .as_any()
-                .downcast_ref::<Empty>()
-                .is_some()
-            {
-                continue;
-            }
-            if self.objects[i].is_marked {
-                self.objects[i].is_marked = false;
-            } else {
-                self.free(i)
+            if let Some(mut object) = self.objects[i].as_mut() {
+                if object.is_marked {
+                    object.is_marked = false;
+                } else {
+                    self.free(i);
+                }
             }
         }
     }
@@ -287,6 +264,6 @@ impl Gc {
     fn remove_white_strings(&mut self) {
         let strings = &mut self.strings;
         let objects = &self.objects;
-        strings.retain(|_k, v| objects[v.index].is_marked);
+        strings.retain(|_k, v| objects[v.index].as_ref().unwrap().is_marked);
     }
 }
