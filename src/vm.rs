@@ -2,10 +2,10 @@ use cpu_time::ProcessTime;
 use fmt::Debug;
 
 use crate::{
-    chunk::{Chunk, Instruction, Table, Value},
+    chunk::{Instruction, Table, Value},
     compiler::compile,
     error::LoxError,
-    gc::{Gc, GcRef, GcTrace, GcTraceFormatter},
+    gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
 use std::fmt;
@@ -74,13 +74,11 @@ impl Vm {
     }
 
     fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
-        let current_frame: *const CallFrame = self.frames.last().unwrap();
-        let current_closure: *const Closure = unsafe { self.gc.deref((*current_frame).closure) };
-        let current_chunk: *const Chunk =
-            unsafe { &self.gc.deref((*current_closure).function).chunk };
+        let current_frame = self.frames.last().unwrap();
+        let current_chunk = &current_frame.closure.function.chunk;
 
         eprintln!("{}", msg);
-        let line = unsafe { (*current_chunk).lines[(*current_frame).ip - 1] };
+        let line = current_chunk.lines[(*current_frame).ip - 1];
         eprintln!("[line {}] in script", line);
         Err(LoxError::RuntimeError)
     }
@@ -98,13 +96,11 @@ impl Vm {
     }
 
     fn run(&mut self) -> Result<(), LoxError> {
-        let mut current_frame: *mut CallFrame = self.frames.last_mut().unwrap();
-        let mut current_closure: *const Closure =
-            unsafe { self.gc.deref((*current_frame).closure) };
-        let mut current_chunk: *const Chunk =
-            unsafe { &self.gc.deref((*current_closure).function).chunk };
+        let mut current_frame: &mut CallFrame =
+            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+        let mut current_chunk = &current_frame.closure.function.chunk;
         loop {
-            let instruction = unsafe { (*current_chunk).code[(*current_frame).ip] };
+            let instruction = current_chunk.code[current_frame.ip];
 
             #[cfg(feature = "debug_trace_execution")]
             {
@@ -116,9 +112,7 @@ impl Vm {
                 dis.instruction(&instruction, unsafe { (*current_frame).ip });
             }
 
-            unsafe {
-                (*current_frame).ip += 1;
-            }
+            current_frame.ip += 1;
 
             match instruction {
                 Instruction::Add => {
@@ -129,8 +123,6 @@ impl Vm {
                         }
 
                         (Value::String(a), Value::String(b)) => {
-                            let a = self.gc.deref(*a);
-                            let b = self.gc.deref(*b);
                             let result = format!("{}{}", a, b);
                             let result = self.intern(result);
                             let value = Value::String(result);
@@ -146,7 +138,7 @@ impl Vm {
                     }
                 }
                 Instruction::Class(constant) => {
-                    let class_name = unsafe { (*current_chunk).read_string(constant) };
+                    let class_name = current_chunk.read_string(constant);
                     let class = Class::new(class_name);
                     let class = self.alloc(class);
                     self.push(Value::Class(class));
@@ -157,19 +149,18 @@ impl Vm {
                     self.pop();
                 }
                 Instruction::Closure(constant) => {
-                    let function = unsafe { (*current_chunk).read_constant(constant) };
+                    let function = current_chunk.read_constant(constant);
                     if let Value::Function(function) = function {
-                        let upvalue_count = self.gc.deref(function).upvalues.len();
+                        let upvalue_count = function.upvalues.len();
                         let mut closure = Closure::new(function);
 
                         for i in 0..upvalue_count {
-                            let upvalue = self.gc.deref(function).upvalues[i];
+                            let upvalue = function.upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
-                                let location =
-                                    unsafe { (*current_frame).slot + upvalue.index as usize };
+                                let location = current_frame.slot + upvalue.index as usize;
                                 self.capture_upvalue(location)
                             } else {
-                                unsafe { (*current_closure).upvalues[upvalue.index as usize] }
+                                current_frame.closure.upvalues[upvalue.index as usize]
                             };
                             closure.upvalues.push(obj_upvalue)
                         }
@@ -182,17 +173,16 @@ impl Vm {
                 }
                 Instruction::Call(arg_count) => {
                     self.call_value(arg_count as usize)?;
-
-                    current_frame = self.frames.last_mut().unwrap();
-                    current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                    current_chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+                    current_frame =
+                        unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                    current_chunk = &current_frame.closure.function.chunk;
                 }
                 Instruction::Constant(constant) => {
-                    let value = unsafe { (*current_chunk).read_constant(constant) };
+                    let value = current_chunk.read_constant(constant);
                     self.push(value);
                 }
                 Instruction::DefineGlobal(constant) => {
-                    let global_name = unsafe { (*current_chunk).read_string(constant) };
+                    let global_name = current_chunk.read_string(constant);
                     let value = self.pop();
                     self.globals.insert(global_name, value);
                 }
@@ -204,26 +194,24 @@ impl Vm {
                 }
                 Instruction::False => self.push(Value::Bool(false)),
                 Instruction::GetGlobal(constant) => {
-                    let global_name = unsafe { (*current_chunk).read_string(constant) };
+                    let global_name = current_chunk.read_string(constant);
                     match self.globals.get(&global_name) {
                         Some(&value) => self.push(value),
                         None => {
-                            let global_name = self.gc.deref(global_name);
                             let msg = format!("Undefined variable '{}'.", global_name);
                             return self.runtime_error(&msg);
                         }
                     }
                 }
                 Instruction::GetLocal(slot) => {
-                    let i = unsafe { slot as usize + (*current_frame).slot };
+                    let i = slot as usize + current_frame.slot;
                     let value = self.stack[i];
                     self.push(value);
                 }
                 Instruction::GetProperty(constant) => {
                     if let Value::Instance(instance) = self.peek(0) {
-                        let instance = self.gc.deref(instance);
                         let class = instance.class;
-                        let property_name = unsafe { (*current_chunk).read_string(constant) };
+                        let property_name = current_chunk.read_string(constant);
                         let value = instance.fields.get(&property_name);
                         match value {
                             Some(&value) => {
@@ -239,7 +227,7 @@ impl Vm {
                     }
                 }
                 Instruction::GetSuper(constant) => {
-                    let method_name = unsafe { (*current_chunk).read_string(constant) };
+                    let method_name = current_chunk.read_string(constant);
                     if let Value::Class(superclass) = self.pop() {
                         self.bind_method(superclass, method_name)?;
                     } else {
@@ -248,8 +236,7 @@ impl Vm {
                 }
                 Instruction::GetUpvalue(slot) => {
                     let value = {
-                        let upvalue = unsafe { (*current_closure).upvalues[slot as usize] };
-                        let upvalue = self.gc.deref(upvalue);
+                        let upvalue = current_frame.closure.upvalues[slot as usize];
                         if let Some(value) = upvalue.closed {
                             value
                         } else {
@@ -261,10 +248,8 @@ impl Vm {
                 Instruction::Greater => self.binary_op(|a, b| a > b, Value::Bool)?,
                 Instruction::Inherit => {
                     let pair = (self.peek(0), self.peek(1));
-                    if let (Value::Class(subclass), Value::Class(superclass)) = pair {
-                        let superclass = self.gc.deref(superclass);
+                    if let (Value::Class(mut subclass), Value::Class(superclass)) = pair {
                         let methods = superclass.methods.clone();
-                        let mut subclass = self.gc.deref_mut(subclass);
                         subclass.methods = methods;
                         self.pop();
                     } else {
@@ -272,28 +257,26 @@ impl Vm {
                     }
                 }
                 Instruction::Invoke((constant, arg_count)) => {
-                    let name = unsafe { (*current_chunk).read_string(constant) };
+                    let name = current_chunk.read_string(constant);
                     self.invoke(name, arg_count as usize)?;
-                    current_frame = self.frames.last_mut().unwrap();
-                    current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                    current_chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+                    current_frame =
+                        unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                    current_chunk = &current_frame.closure.function.chunk;
                 }
                 Instruction::Jump(offset) => {
-                    unsafe { (*current_frame).ip += offset as usize };
+                    current_frame.ip += offset as usize;
                 }
                 Instruction::JumpIfFalse(offset) => {
                     if self.peek(0).is_falsey() {
-                        unsafe { (*current_frame).ip += offset as usize };
+                        current_frame.ip += offset as usize;
                     }
                 }
                 Instruction::Less => self.binary_op(|a, b| a < b, Value::Bool)?,
                 Instruction::Loop(offset) => {
-                    unsafe {
-                        (*current_frame).ip -= offset as usize + 1;
-                    };
+                    current_frame.ip -= offset as usize + 1;
                 }
                 Instruction::Method(constant) => {
-                    let method_name = unsafe { (*current_chunk).read_string(constant) };
+                    let method_name = current_chunk.read_string(constant);
                     self.define_method(method_name);
                 }
                 Instruction::Multiply => self.binary_op(|a, b| a * b, Value::Number)?,
@@ -314,9 +297,7 @@ impl Vm {
                     self.pop();
                 }
                 Instruction::Print => {
-                    let value = self.pop();
-                    let formatter = GcTraceFormatter::new(value, &self.gc);
-                    println!("{}", formatter);
+                    println!("{}", self.pop());
                 }
                 Instruction::Return => {
                     let frame = self.frames.pop().unwrap();
@@ -329,32 +310,29 @@ impl Vm {
                         self.stack.truncate(frame.slot);
                         self.push(return_value);
 
-                        current_frame = self.frames.last_mut().unwrap();
-                        current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                        current_chunk =
-                            unsafe { &self.gc.deref((*current_closure).function).chunk };
+                        current_frame =
+                            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                        current_chunk = &current_frame.closure.function.chunk;
                     }
                 }
                 Instruction::SetGlobal(constant) => {
-                    let global_name = unsafe { (*current_chunk).read_string(constant) };
+                    let global_name = current_chunk.read_string(constant);
                     let value = self.peek(0);
                     if self.globals.insert(global_name, value).is_none() {
                         self.globals.remove(&global_name);
-                        let s = self.gc.deref(global_name);
-                        let msg = format!("Undefined variable '{}'.", s);
+                        let msg = format!("Undefined variable '{}'.", global_name);
                         return self.runtime_error(&msg);
                     }
                 }
                 Instruction::SetLocal(slot) => {
-                    let i = unsafe { slot as usize + (*current_frame).slot };
+                    let i = slot as usize + (*current_frame).slot;
                     let value = self.peek(0);
                     self.stack[i] = value;
                 }
                 Instruction::SetProperty(constant) => {
-                    if let Value::Instance(instance) = self.peek(1) {
-                        let property_name = unsafe { (*current_chunk).read_string(constant) };
+                    if let Value::Instance(mut instance) = self.peek(1) {
+                        let property_name = current_chunk.read_string(constant);
                         let value = self.pop();
-                        let instance = self.gc.deref_mut(instance);
                         instance.fields.insert(property_name, value);
                         self.pop();
                         self.push(value);
@@ -363,9 +341,8 @@ impl Vm {
                     }
                 }
                 Instruction::SetUpvalue(slot) => {
-                    let upvalue = unsafe { (*current_closure).upvalues[slot as usize] };
+                    let mut upvalue = current_frame.closure.upvalues[slot as usize];
                     let value = self.peek(0);
-                    let mut upvalue = self.gc.deref_mut(upvalue);
                     if upvalue.closed.is_none() {
                         self.stack[upvalue.location] = value;
                     } else {
@@ -374,13 +351,12 @@ impl Vm {
                 }
                 Instruction::Substract => self.binary_op(|a, b| a - b, Value::Number)?,
                 Instruction::SuperInvoke((constant, arg_count)) => {
-                    let method_name = unsafe { (*current_chunk).read_string(constant) };
+                    let method_name = current_chunk.read_string(constant);
                     if let Value::Class(class) = self.pop() {
                         self.invoke_from_class(class, method_name, arg_count as usize)?;
-                        current_frame = self.frames.last_mut().unwrap();
-                        current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                        current_chunk =
-                            unsafe { &self.gc.deref((*current_closure).function).chunk };
+                        current_frame =
+                            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                        current_chunk = &current_frame.closure.function.chunk;
                     } else {
                         panic!("super invoke with no class");
                     }
@@ -393,7 +369,6 @@ impl Vm {
         let callee = self.peek(arg_count);
         match callee {
             Value::BoundMethod(bound) => {
-                let bound = self.gc.deref(bound);
                 let method = bound.method;
                 let receiver = bound.receiver;
                 self.set_at(arg_count, receiver);
@@ -403,7 +378,6 @@ impl Vm {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
                 self.set_at(arg_count, Value::Instance(instance));
-                let class = self.gc.deref(class);
                 if let Some(&initializer) = class.methods.get(&self.init_string) {
                     if let Value::Closure(initializer) = initializer {
                         return self.call(initializer, arg_count);
@@ -427,9 +401,8 @@ impl Vm {
         }
     }
 
-    fn call(&mut self, closure_ref: GcRef<Closure>, arg_count: usize) -> Result<(), LoxError> {
-        let closure = self.gc.deref(closure_ref);
-        let function = self.gc.deref(closure.function);
+    fn call(&mut self, closure: GcRef<Closure>, arg_count: usize) -> Result<(), LoxError> {
+        let function = closure.function;
         if arg_count != function.arity {
             let msg = format!(
                 "Expected {} arguments but got {}.",
@@ -439,7 +412,7 @@ impl Vm {
         } else if self.frames.len() == Vm::MAX_FRAMES {
             self.runtime_error("Stack overflow.")
         } else {
-            let frame = CallFrame::new(closure_ref, self.stack.len() - arg_count - 1);
+            let frame = CallFrame::new(closure, self.stack.len() - arg_count - 1);
             self.frames.push(frame);
             Ok(())
         }
@@ -448,7 +421,6 @@ impl Vm {
     fn invoke(&mut self, name: GcRef<String>, arg_count: usize) -> Result<(), LoxError> {
         let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
-            let instance = self.gc.deref(instance);
             if let Some(&field) = instance.fields.get(&name) {
                 self.set_at(arg_count, field);
                 self.call_value(arg_count)
@@ -467,7 +439,6 @@ impl Vm {
         name: GcRef<String>,
         arg_count: usize,
     ) -> Result<(), LoxError> {
-        let class = self.gc.deref(class);
         if let Some(&method) = class.methods.get(&name) {
             if let Value::Closure(closure) = method {
                 self.call(closure, arg_count)
@@ -475,14 +446,12 @@ impl Vm {
                 panic!("Got method that is not closure!")
             }
         } else {
-            let name = self.gc.deref(name);
             let msg = format!("Undefined property '{}'.", name);
             self.runtime_error(&msg)
         }
     }
 
     fn bind_method(&mut self, class: GcRef<Class>, name: GcRef<String>) -> Result<(), LoxError> {
-        let class = self.gc.deref(class);
         if let Some(method) = class.methods.get(&name) {
             let receiver = self.peek(0);
             let method = match method {
@@ -495,17 +464,15 @@ impl Vm {
             self.push(Value::BoundMethod(bound));
             Ok(())
         } else {
-            let name = self.gc.deref(name);
             let msg = format!("Undefined property '{}'.", name);
             self.runtime_error(&msg)
         }
     }
 
     fn capture_upvalue(&mut self, location: usize) -> GcRef<Upvalue> {
-        for &upvalue_ref in &self.open_upvalues {
-            let upvalue = self.gc.deref(upvalue_ref);
+        for &upvalue in &self.open_upvalues {
             if upvalue.location == location {
-                return upvalue_ref;
+                return upvalue;
             }
         }
         let upvalue = Upvalue::new(location);
@@ -516,8 +483,7 @@ impl Vm {
     fn close_upvalues(&mut self, last: usize) {
         let mut i = 0;
         while i != self.open_upvalues.len() {
-            let upvalue = self.open_upvalues[i];
-            let upvalue = self.gc.deref_mut(upvalue);
+            let mut upvalue = self.open_upvalues[i];
             if upvalue.location >= last {
                 // PERF: Remove is expensive
                 self.open_upvalues.remove(i);
@@ -531,8 +497,7 @@ impl Vm {
 
     fn define_method(&mut self, name: GcRef<String>) {
         let method = self.peek(0);
-        if let Value::Class(class) = self.peek(1) {
-            let class = self.gc.deref_mut(class);
+        if let Value::Class(mut class) = self.peek(1) {
             class.methods.insert(name, method);
             self.pop();
         } else {
@@ -602,12 +567,11 @@ fn clock(vm: &Vm, _args: &[Value]) -> Value {
     Value::Number(time)
 }
 
-fn lox_panic(vm: &Vm, args: &[Value]) -> Value {
+fn lox_panic(_vm: &Vm, args: &[Value]) -> Value {
     let mut terms: Vec<String> = vec![];
 
     for &arg in args.iter() {
-        let formatter = GcTraceFormatter::new(arg, &vm.gc);
-        let term = format!("{}", formatter);
+        let term = format!("{}", arg);
         terms.push(term);
     }
 

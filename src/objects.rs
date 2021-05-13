@@ -1,4 +1,8 @@
-use std::{fmt, mem};
+use std::{
+    fmt::{self, Debug},
+    mem,
+    ops::Deref,
+};
 
 use crate::{
     chunk::Chunk,
@@ -8,9 +12,6 @@ use crate::{
 };
 
 impl GcTrace for String {
-    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
-        write!(f, "{}", self)
-    }
     fn size(&self) -> usize {
         mem::size_of::<String>() + self.as_bytes().len()
     }
@@ -62,15 +63,17 @@ impl fmt::Debug for Function {
     }
 }
 
-impl GcTrace for Function {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
-        let name = gc.deref(self.name);
-        if name.is_empty() {
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.name.deref() == "script" {
             write!(f, "<script>")
         } else {
-            write!(f, "<fn {}>", name)
+            write!(f, "<fn {}>", self.name)
         }
     }
+}
+
+impl GcTrace for Function {
     fn size(&self) -> usize {
         mem::size_of::<Function>()
             + self.upvalues.capacity() * mem::size_of::<FunctionUpvalue>()
@@ -102,9 +105,6 @@ impl Upvalue {
 }
 
 impl GcTrace for Upvalue {
-    fn format(&self, f: &mut fmt::Formatter, _gc: &Gc) -> fmt::Result {
-        write!(f, "upvalue")
-    }
     fn size(&self) -> usize {
         mem::size_of::<Upvalue>()
     }
@@ -136,10 +136,6 @@ impl fmt::Debug for Closure {
 }
 
 impl GcTrace for Closure {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
-        let function = gc.deref(self.function);
-        function.format(f, gc)
-    }
     fn size(&self) -> usize {
         mem::size_of::<Closure>() + self.upvalues.capacity() * mem::size_of::<GcRef<Upvalue>>()
     }
@@ -167,10 +163,6 @@ impl Class {
 }
 
 impl GcTrace for Class {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
-        let name = gc.deref(self.name);
-        write!(f, "{}", name)
-    }
     fn size(&self) -> usize {
         mem::size_of::<Class>()
     }
@@ -196,11 +188,6 @@ impl Instance {
 }
 
 impl GcTrace for Instance {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
-        let class = gc.deref(self.class);
-        let name = gc.deref(class.name);
-        write!(f, "{} instance", name)
-    }
     fn size(&self) -> usize {
         mem::size_of::<Instance>()
             + self.fields.capacity() * (mem::size_of::<GcRef<String>>() + mem::size_of::<Value>())
@@ -224,10 +211,6 @@ impl BoundMethod {
 }
 
 impl GcTrace for BoundMethod {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
-        let method = gc.deref(self.method);
-        method.format(f, gc)
-    }
     fn size(&self) -> usize {
         mem::size_of::<BoundMethod>()
     }

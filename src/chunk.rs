@@ -2,7 +2,10 @@ use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Function, Instance, NativeFunction},
 };
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -28,15 +31,15 @@ impl Value {
     }
 }
 
-impl GcTrace for Value {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result {
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Bool(value) => write!(f, "{}", value),
-            Value::BoundMethod(value) => gc.deref(*value).format(f, gc),
-            Value::Class(value) => gc.deref(*value).format(f, gc),
-            Value::Closure(value) => gc.deref(*value).format(f, gc),
-            Value::Function(value) => gc.deref(*value).format(f, gc),
-            Value::Instance(value) => gc.deref(*value).format(f, gc),
+            Value::BoundMethod(value) => write!(f, "{}", value.method.function),
+            Value::Class(value) => write!(f, "{}", value.name),
+            Value::Closure(value) => write!(f, "{}", value.function),
+            Value::Function(value) => write!(f, "{}", value.name),
+            Value::Instance(value) => write!(f, "{} instance", value.class.name),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => {
@@ -47,9 +50,12 @@ impl GcTrace for Value {
                     write!(f, "{}", value)
                 }
             }
-            Value::String(value) => gc.deref(*value).format(f, gc),
+            Value::String(value) => write!(f, "{}", value),
         }
     }
+}
+
+impl GcTrace for Value {
     fn size(&self) -> usize {
         0
     }

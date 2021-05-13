@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt, hash};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+    hash,
+};
 use std::{
     collections::VecDeque,
     ops::{Deref, DerefMut},
@@ -10,25 +14,8 @@ use fmt::Debug;
 use crate::chunk::{Table, Value};
 
 pub trait GcTrace {
-    fn format(&self, f: &mut fmt::Formatter, gc: &Gc) -> fmt::Result;
     fn size(&self) -> usize;
     fn trace(&self, gc: &mut Gc);
-}
-pub struct GcTraceFormatter<'gc, T: GcTrace> {
-    gc: &'gc Gc,
-    object: T,
-}
-
-impl<'gc, T: GcTrace> GcTraceFormatter<'gc, T> {
-    pub fn new(object: T, gc: &'gc Gc) -> Self {
-        GcTraceFormatter { object, gc }
-    }
-}
-
-impl<'gc, T: GcTrace> fmt::Display for GcTraceFormatter<'gc, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.object.format(f, self.gc)
-    }
 }
 
 struct GcBox<T: GcTrace + ?Sized + 'static> {
@@ -80,6 +67,12 @@ impl hash::Hash for GcRef<String> {
 impl<T: GcTrace + Debug> Debug for GcRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe { self.pointer.as_ref().value.fmt(f) }
+    }
+}
+
+impl<T: GcTrace + Display> Display for GcRef<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe { write!(f, "{}", self.pointer.as_ref().value) }
     }
 }
 
@@ -153,14 +146,6 @@ impl Gc {
             self.strings.insert(key, reference);
             reference
         }
-    }
-
-    pub fn deref<T: GcTrace>(&self, reference: GcRef<T>) -> &T {
-        unsafe { &(*reference.pointer.as_ptr()).value }
-    }
-
-    pub fn deref_mut<T: GcTrace>(&mut self, reference: GcRef<T>) -> &mut T {
-        unsafe { &mut (*reference.pointer.as_ptr()).value }
     }
 
     pub fn collect_garbage(&mut self) {
