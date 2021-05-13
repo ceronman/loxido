@@ -1,4 +1,4 @@
-use std::{any::Any, fmt, mem};
+use std::{fmt, mem};
 
 use crate::{
     chunk::Chunk,
@@ -15,12 +15,6 @@ impl GcTrace for String {
         mem::size_of::<String>() + self.as_bytes().len()
     }
     fn trace(&self, _gc: &mut Gc) {}
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -44,7 +38,6 @@ pub struct FunctionUpvalue {
     pub is_local: bool,
 }
 
-#[derive(Debug)]
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
@@ -60,6 +53,12 @@ impl Function {
             name,
             upvalues: Vec::new(),
         }
+    }
+}
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<fn {:?}>", self.name)
     }
 }
 
@@ -84,12 +83,6 @@ impl GcTrace for Function {
         for &constant in &self.chunk.constants {
             gc.mark_value(constant);
         }
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -120,15 +113,8 @@ impl GcTrace for Upvalue {
             gc.mark_value(obj)
         }
     }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
-#[derive(Debug)]
 pub struct Closure {
     pub function: GcRef<Function>,
     pub upvalues: Vec<GcRef<Upvalue>>,
@@ -140,6 +126,12 @@ impl Closure {
             function,
             upvalues: Vec::new(),
         }
+    }
+}
+
+impl fmt::Debug for Closure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<fn {:?}>", self.function)
     }
 }
 
@@ -156,12 +148,6 @@ impl GcTrace for Closure {
         for &upvalue in &self.upvalues {
             gc.mark_object(upvalue);
         }
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -191,12 +177,6 @@ impl GcTrace for Class {
     fn trace(&self, gc: &mut Gc) {
         gc.mark_object(self.name);
         gc.mark_table(&self.methods);
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -229,12 +209,6 @@ impl GcTrace for Instance {
         gc.mark_object(self.class);
         gc.mark_table(&self.fields);
     }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 #[derive(Debug)]
@@ -260,11 +234,5 @@ impl GcTrace for BoundMethod {
     fn trace(&self, gc: &mut Gc) {
         gc.mark_value(self.receiver);
         gc.mark_object(self.method);
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }

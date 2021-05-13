@@ -76,10 +76,11 @@ impl Vm {
     fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
         let current_frame: *const CallFrame = self.frames.last().unwrap();
         let current_closure: *const Closure = unsafe { self.gc.deref((*current_frame).closure) };
-        let current_chunk: *const Chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+        let current_chunk: *const Chunk =
+            unsafe { &self.gc.deref((*current_closure).function).chunk };
 
         eprintln!("{}", msg);
-        let line = unsafe { (*current_chunk).lines[ (*current_frame).ip - 1] };
+        let line = unsafe { (*current_chunk).lines[(*current_frame).ip - 1] };
         eprintln!("[line {}] in script", line);
         Err(LoxError::RuntimeError)
     }
@@ -98,8 +99,10 @@ impl Vm {
 
     fn run(&mut self) -> Result<(), LoxError> {
         let mut current_frame: *mut CallFrame = self.frames.last_mut().unwrap();
-        let mut current_closure: *const Closure = unsafe { self.gc.deref((*current_frame).closure) };
-        let mut current_chunk: *const Chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+        let mut current_closure: *const Closure =
+            unsafe { self.gc.deref((*current_frame).closure) };
+        let mut current_chunk: *const Chunk =
+            unsafe { &self.gc.deref((*current_closure).function).chunk };
         loop {
             let instruction = unsafe { (*current_chunk).code[(*current_frame).ip] };
 
@@ -107,13 +110,15 @@ impl Vm {
             {
                 let dis = crate::chunk::Disassembler::new(
                     &self.gc,
-                    self.current_chunk(),
+                    unsafe { &*current_chunk },
                     Some(&self.stack),
                 );
-                dis.instruction(&instruction, self.current_frame().ip);
+                dis.instruction(&instruction, unsafe { (*current_frame).ip });
             }
 
-            unsafe { (*current_frame).ip += 1; }
+            unsafe {
+                (*current_frame).ip += 1;
+            }
 
             match instruction {
                 Instruction::Add => {
@@ -160,7 +165,8 @@ impl Vm {
                         for i in 0..upvalue_count {
                             let upvalue = self.gc.deref(function).upvalues[i];
                             let obj_upvalue = if upvalue.is_local {
-                                let location = unsafe { (*current_frame).slot + upvalue.index as usize };
+                                let location =
+                                    unsafe { (*current_frame).slot + upvalue.index as usize };
                                 self.capture_upvalue(location)
                             } else {
                                 unsafe { (*current_closure).upvalues[upvalue.index as usize] }
@@ -282,7 +288,9 @@ impl Vm {
                 }
                 Instruction::Less => self.binary_op(|a, b| a < b, Value::Bool)?,
                 Instruction::Loop(offset) => {
-                    unsafe { (*current_frame).ip -= offset as usize + 1; };
+                    unsafe {
+                        (*current_frame).ip -= offset as usize + 1;
+                    };
                 }
                 Instruction::Method(constant) => {
                     let method_name = unsafe { (*current_chunk).read_string(constant) };
@@ -323,7 +331,8 @@ impl Vm {
 
                         current_frame = self.frames.last_mut().unwrap();
                         current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                        current_chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+                        current_chunk =
+                            unsafe { &self.gc.deref((*current_closure).function).chunk };
                     }
                 }
                 Instruction::SetGlobal(constant) => {
@@ -354,7 +363,7 @@ impl Vm {
                     }
                 }
                 Instruction::SetUpvalue(slot) => {
-                    let upvalue = unsafe{ (*current_closure).upvalues[slot as usize] };
+                    let upvalue = unsafe { (*current_closure).upvalues[slot as usize] };
                     let value = self.peek(0);
                     let mut upvalue = self.gc.deref_mut(upvalue);
                     if upvalue.closed.is_none() {
@@ -370,7 +379,8 @@ impl Vm {
                         self.invoke_from_class(class, method_name, arg_count as usize)?;
                         current_frame = self.frames.last_mut().unwrap();
                         current_closure = unsafe { self.gc.deref((*current_frame).closure) };
-                        current_chunk = unsafe { &self.gc.deref((*current_closure).function).chunk };
+                        current_chunk =
+                            unsafe { &self.gc.deref((*current_closure).function).chunk };
                     } else {
                         panic!("super invoke with no class");
                     }

@@ -2,7 +2,7 @@ use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Function, Instance, NativeFunction},
 };
-use std::{any::Any, collections::HashMap, fmt};
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -63,12 +63,6 @@ impl GcTrace for Value {
             Value::String(value) => gc.mark_object(*value),
             _ => (),
         }
-    }
-    fn as_any(&self) -> &dyn Any {
-        panic!("Value should not be allocated")
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        panic!("Value should not be allocated")
     }
 }
 
