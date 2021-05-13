@@ -157,7 +157,7 @@ impl Class {
     pub fn new(name: GcRef<String>) -> Self {
         Class {
             name,
-            methods: Table::new(),
+            methods: Table::default(),
         }
     }
 }
@@ -182,7 +182,7 @@ impl Instance {
     pub fn new(class: GcRef<Class>) -> Self {
         Instance {
             class,
-            fields: Table::new(),
+            fields: Table::default(),
         }
     }
 }

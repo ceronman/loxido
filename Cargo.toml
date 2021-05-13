@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Manuel Cerón <ceronman@gmail.com>"]
 edition = "2018"
 
-[profile.release]
-debug = true
-
 [features]
 default = []
 debug_log_gc = []
@@ -14,6 +11,7 @@ debug_stress_gc = []
 debug_trace_execution = []
 
 [dependencies]
+ahash = "0.7.2"
 cpu-time = "1.0.0"
 
 [dev-dependencies]

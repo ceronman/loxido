@@ -1,11 +1,10 @@
+use ahash::AHashMap;
+
 use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Function, Instance, NativeFunction},
 };
-use std::{
-    collections::HashMap,
-    fmt::{self, Display},
-};
+use std::fmt::{self, Display};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -72,7 +71,7 @@ impl GcTrace for Value {
     }
 }
 
-pub type Table = HashMap<GcRef<String>, Value>;
+pub type Table = AHashMap<GcRef<String>, Value>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {

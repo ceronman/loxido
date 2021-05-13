@@ -1,14 +1,14 @@
 use std::{
-    collections::HashMap,
-    fmt::{self, Display},
-    hash,
-};
-use std::{
     collections::VecDeque,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
+use std::{
+    fmt::{self, Display},
+    hash,
+};
 
+use ahash::AHashMap;
 use fmt::Debug;
 
 use crate::chunk::{Table, Value};
@@ -86,7 +86,7 @@ pub struct Gc {
     bytes_allocated: usize,
     next_gc: usize,
     first: Option<NonNull<GcBox<dyn GcTrace>>>,
-    strings: HashMap<&'static str, GcRef<String>>,
+    strings: AHashMap<&'static str, GcRef<String>>,
     grey_stack: VecDeque<NonNull<GcBox<dyn GcTrace>>>,
 }
 
@@ -98,7 +98,7 @@ impl Gc {
             bytes_allocated: 0,
             next_gc: 1024 * 1024,
             first: None,
-            strings: HashMap::new(),
+            strings: AHashMap::new(),
             grey_stack: VecDeque::new(),
         }
     }

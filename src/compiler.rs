@@ -1,3 +1,5 @@
+use ahash::AHashMap;
+
 use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
@@ -6,7 +8,6 @@ use crate::{
     objects::FunctionUpvalue,
     scanner::{Scanner, Token, TokenType},
 };
-use std::collections::HashMap;
 use std::{convert::TryFrom, mem};
 
 #[derive(Copy, Clone, PartialOrd, PartialEq)]
@@ -198,12 +199,12 @@ struct Parser<'sourcecode> {
     had_error: bool,
     panic_mode: bool,
     resolver_errors: Vec<&'static str>,
-    rules: HashMap<TokenType, ParseRule<'sourcecode>>,
+    rules: AHashMap<TokenType, ParseRule<'sourcecode>>,
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
     fn new(code: &'sourcecode str, gc: &'sourcecode mut Gc) -> Parser<'sourcecode> {
-        let mut rules = HashMap::new();
+        let mut rules = AHashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
             rules.insert(kind, ParseRule::new(prefix, infix, precedence));

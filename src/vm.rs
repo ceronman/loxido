@@ -96,7 +96,7 @@ impl Vm {
     }
 
     fn run(&mut self) -> Result<(), LoxError> {
-        let mut current_frame: &mut CallFrame =
+        let mut current_frame =
             unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
         let mut current_chunk = &current_frame.closure.function.chunk;
         loop {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone, Hash)]
 pub enum TokenType {
@@ -69,7 +69,7 @@ impl<'sourcecode> Token<'sourcecode> {
 }
 
 pub struct Scanner<'sourcecode> {
-    keywords: HashMap<&'static str, TokenType>,
+    keywords: AHashMap<&'static str, TokenType>,
     code: &'sourcecode str,
     start: usize,
     current: usize,
@@ -78,7 +78,7 @@ pub struct Scanner<'sourcecode> {
 
 impl<'sourcecode> Scanner<'sourcecode> {
     pub fn new(code: &'sourcecode str) -> Scanner {
-        let mut keywords = HashMap::with_capacity(16);
+        let mut keywords = AHashMap::with_capacity(16);
         keywords.insert("and", TokenType::And);
         keywords.insert("class", TokenType::Class);
         keywords.insert("else", TokenType::Else);
