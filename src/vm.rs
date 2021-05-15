@@ -104,12 +104,8 @@ impl Vm {
 
             #[cfg(feature = "debug_trace_execution")]
             {
-                let dis = crate::chunk::Disassembler::new(
-                    &self.gc,
-                    unsafe { &*current_chunk },
-                    Some(&self.stack),
-                );
-                dis.instruction(&instruction, unsafe { (*current_frame).ip });
+                let dis = crate::chunk::Disassembler::new(current_chunk, Some(&self.stack));
+                dis.instruction(&instruction, current_frame.ip);
             }
 
             current_frame.ip += 1;
