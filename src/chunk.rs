@@ -156,12 +156,12 @@ impl Chunk {
 #[cfg(feature = "debug_trace_execution")]
 pub struct Disassembler<'vm> {
     chunk: &'vm Chunk,
-    stack: Option<&'vm Vec<Value>>,
+    stack: Option<&'vm [Value]>,
 }
 
 #[cfg(feature = "debug_trace_execution")]
 impl<'vm> Disassembler<'vm> {
-    pub fn new(chunk: &'vm Chunk, stack: Option<&'vm Vec<Value>>) -> Self {
+    pub fn new(chunk: &'vm Chunk, stack: Option<&'vm [Value]>) -> Self {
         Disassembler { chunk, stack }
     }
 

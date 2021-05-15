@@ -8,12 +8,13 @@ use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
-use std::fmt;
+use std::{fmt, ptr::{null_mut}};
 
 pub struct Vm {
     gc: Gc,
     frames: Vec<CallFrame>,
-    stack: Vec<Value>,
+    stack: [Value; Vm::STACK_SIZE],
+    stack_top: *mut Value,
     globals: Table,
     open_upvalues: Vec<GcRef<Upvalue>>,
     init_string: GcRef<String>,
@@ -28,18 +29,22 @@ impl Vm {
         let mut gc = Gc::new();
         let init_string = gc.intern("init".to_owned());
 
-        let mut vm = Self {
+        Self {
             gc,
             frames: Vec::with_capacity(Vm::MAX_FRAMES),
-            stack: Vec::with_capacity(Vm::STACK_SIZE),
+            stack: [Value::Nil; Vm::STACK_SIZE],
+            stack_top: null_mut(),
             globals: Table::new(),
             open_upvalues: Vec::with_capacity(Vm::STACK_SIZE),
             init_string,
             start_time: ProcessTime::now(),
-        };
-        vm.define_native("clock", NativeFunction(clock));
-        vm.define_native("panic", NativeFunction(lox_panic));
-        vm
+        }
+    }
+
+    pub fn initialize(&mut self) {
+        self.define_native("clock", NativeFunction(clock));
+        self.define_native("panic", NativeFunction(lox_panic));
+        self.stack_top = self.stack.as_mut_ptr();
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), LoxError> {
@@ -51,21 +56,42 @@ impl Vm {
     }
 
     fn push(&mut self, v: Value) {
-        self.stack.push(v);
+        unsafe {
+            *self.stack_top = v;
+            self.stack_top = self.stack_top.offset(1);
+        }
     }
 
     fn pop(&mut self) -> Value {
-        self.stack.pop().expect("Empty stack")
+        unsafe {
+            self.stack_top = self.stack_top.offset(-1);
+            *self.stack_top
+        }
     }
 
     fn peek(&self, n: usize) -> Value {
-        let size = self.stack.len();
-        self.stack[size - 1 - n]
+        unsafe {
+            *self.stack_top.offset(-1 - n as isize)
+        }
+    }
+
+    fn stack_truncate(&mut self, index: usize) {
+        unsafe {
+            self.stack_top = self.stack.as_mut_ptr().offset(index as isize)
+        }
+    }
+
+    fn stack_len(&self) -> usize {
+        unsafe {
+            self.stack_top.offset_from(self.stack.as_ptr()) as usize
+        }
     }
 
     fn set_at(&mut self, n: usize, value: Value) {
-        let size = self.stack.len();
-        self.stack[size - 1 - n] = value;
+        unsafe {
+            let pos = self.stack_top.offset(-1 -(n as isize));
+            *pos = value
+        }
     }
 
     fn define_native(&mut self, name: &str, native: NativeFunction) {
@@ -104,7 +130,7 @@ impl Vm {
 
             #[cfg(feature = "debug_trace_execution")]
             {
-                let dis = crate::chunk::Disassembler::new(current_chunk, Some(&self.stack));
+                let dis = crate::chunk::Disassembler::new(current_chunk, Some(&self.stack[0..self.stack_len()]));
                 dis.instruction(&instruction, current_frame.ip);
             }
 
@@ -140,7 +166,7 @@ impl Vm {
                     self.push(Value::Class(class));
                 }
                 Instruction::CloseUpvalue => {
-                    let stack_top = self.stack.len() - 1;
+                    let stack_top = self.stack_len() - 1;
                     self.close_upvalues(stack_top);
                     self.pop();
                 }
@@ -303,7 +329,7 @@ impl Vm {
                     if self.frames.is_empty() {
                         return Ok(());
                     } else {
-                        self.stack.truncate(frame.slot);
+                        self.stack_truncate(frame.slot);
                         self.push(return_value);
 
                         current_frame =
@@ -387,9 +413,9 @@ impl Vm {
             }
             Value::Closure(closure) => self.call(closure, arg_count),
             Value::NativeFunction(native) => {
-                let left = self.stack.len() - arg_count;
+                let left = self.stack_len() - arg_count;
                 let result = native.0(&self, &self.stack[left..]);
-                self.stack.truncate(left - 1);
+                self.stack_truncate(left - 1);
                 self.push(result);
                 Ok(())
             }
@@ -408,7 +434,7 @@ impl Vm {
         } else if self.frames.len() == Vm::MAX_FRAMES {
             self.runtime_error("Stack overflow.")
         } else {
-            let frame = CallFrame::new(closure, self.stack.len() - arg_count - 1);
+            let frame = CallFrame::new(closure, self.stack_len() - arg_count - 1);
             self.frames.push(frame);
             Ok(())
         }
