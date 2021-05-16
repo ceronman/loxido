@@ -12,7 +12,8 @@ use std::{fmt, ptr::{null_mut}};
 
 pub struct Vm {
     gc: Gc,
-    frames: Vec<CallFrame>,
+    frames: [CallFrame; Vm::MAX_FRAMES],
+    frame_count: usize,
     stack: [Value; Vm::STACK_SIZE],
     stack_top: *mut Value,
     globals: Table,
@@ -31,7 +32,8 @@ impl Vm {
 
         Self {
             gc,
-            frames: Vec::with_capacity(Vm::MAX_FRAMES),
+            frames: [CallFrame { closure: GcRef::dangling(), ip: 0, slot: 0 }; Vm::MAX_FRAMES],
+            frame_count: 0,
             stack: [Value::Nil; Vm::STACK_SIZE],
             stack_top: null_mut(),
             globals: Table::new(),
@@ -51,7 +53,8 @@ impl Vm {
         let function = compile(code, &mut self.gc)?;
         self.push(Value::Function(function));
         let closure = self.alloc(Closure::new(function));
-        self.frames.push(CallFrame::new(closure, 0));
+        self.frames[self.frame_count] = CallFrame::new(closure, 0);
+        self.frame_count += 1;
         self.run()
     }
 
@@ -100,7 +103,7 @@ impl Vm {
     }
 
     fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
-        let current_frame = self.frames.last().unwrap();
+        let current_frame = &self.frames[self.frame_count - 1];
         let current_chunk = &current_frame.closure.function.chunk;
 
         eprintln!("{}", msg);
@@ -123,7 +126,7 @@ impl Vm {
 
     fn run(&mut self) -> Result<(), LoxError> {
         let mut current_frame =
-            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+            unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
         let mut current_chunk = &current_frame.closure.function.chunk;
         loop {
             let instruction = current_chunk.code[current_frame.ip];
@@ -196,7 +199,7 @@ impl Vm {
                 Instruction::Call(arg_count) => {
                     self.call_value(arg_count as usize)?;
                     current_frame =
-                        unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                        unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
                     current_chunk = &current_frame.closure.function.chunk;
                 }
                 Instruction::Constant(constant) => {
@@ -282,7 +285,7 @@ impl Vm {
                     let name = current_chunk.read_string(constant);
                     self.invoke(name, arg_count as usize)?;
                     current_frame =
-                        unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                        unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
                     current_chunk = &current_frame.closure.function.chunk;
                 }
                 Instruction::Jump(offset) => {
@@ -322,18 +325,18 @@ impl Vm {
                     println!("{}", self.pop());
                 }
                 Instruction::Return => {
-                    let frame = self.frames.pop().unwrap();
+                    self.frame_count -= 1;
                     let return_value = self.pop();
-                    self.close_upvalues(frame.slot);
+                    self.close_upvalues(current_frame.slot);
 
-                    if self.frames.is_empty() {
+                    if self.frame_count == 0 {
                         return Ok(());
                     } else {
-                        self.stack_truncate(frame.slot);
+                        self.stack_truncate(current_frame.slot);
                         self.push(return_value);
 
                         current_frame =
-                            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                            unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
                         current_chunk = &current_frame.closure.function.chunk;
                     }
                 }
@@ -377,7 +380,7 @@ impl Vm {
                     if let Value::Class(class) = self.pop() {
                         self.invoke_from_class(class, method_name, arg_count as usize)?;
                         current_frame =
-                            unsafe { &mut *(self.frames.last_mut().unwrap() as *mut CallFrame) };
+                            unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
                         current_chunk = &current_frame.closure.function.chunk;
                     } else {
                         panic!("super invoke with no class");
@@ -431,11 +434,12 @@ impl Vm {
                 function.arity, arg_count
             );
             self.runtime_error(&msg)
-        } else if self.frames.len() == Vm::MAX_FRAMES {
+        } else if self.frame_count == Vm::MAX_FRAMES {
             self.runtime_error("Stack overflow.")
         } else {
             let frame = CallFrame::new(closure, self.stack_len() - arg_count - 1);
-            self.frames.push(frame);
+            self.frames[self.frame_count] = frame;
+            self.frame_count += 1;
             Ok(())
         }
     }
@@ -568,6 +572,8 @@ impl Vm {
     }
 }
 
+
+#[derive(Clone, Copy)]
 struct CallFrame {
     closure: GcRef<Closure>,
     ip: usize,

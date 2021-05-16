@@ -29,6 +29,14 @@ pub struct GcRef<T: GcTrace + ?Sized + 'static> {
     pointer: NonNull<GcBox<T>>,
 }
 
+impl<T: GcTrace> GcRef<T> {
+    pub fn dangling() -> GcRef<T> {
+        GcRef {
+           pointer: NonNull::dangling()
+        }
+    }
+}
+
 impl<T: GcTrace> Copy for GcRef<T> {}
 
 impl<T: GcTrace> Clone for GcRef<T> {
