@@ -1,11 +1,10 @@
 use std::{
-    collections::VecDeque,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
-use std::{
     fmt::{self, Display},
     hash,
+};
+use std::{
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
 };
 
 use ahash::AHashMap;
@@ -95,7 +94,7 @@ pub struct Gc {
     next_gc: usize,
     first: Option<NonNull<GcBox<dyn GcTrace>>>,
     strings: AHashMap<&'static str, GcRef<String>>,
-    grey_stack: VecDeque<NonNull<GcBox<dyn GcTrace>>>,
+    grey_stack: Vec<NonNull<GcBox<dyn GcTrace>>>,
 }
 
 impl Gc {
@@ -107,7 +106,7 @@ impl Gc {
             next_gc: 1024 * 1024,
             first: None,
             strings: AHashMap::new(),
-            grey_stack: VecDeque::new(),
+            grey_stack: Vec::new(),
         }
     }
 
@@ -176,7 +175,7 @@ impl Gc {
     }
 
     fn trace_references(&mut self) {
-        while let Some(pointer) = self.grey_stack.pop_back() {
+        while let Some(pointer) = self.grey_stack.pop() {
             self.blacken_object(pointer);
         }
     }
@@ -195,7 +194,7 @@ impl Gc {
     pub fn mark_object<T: GcTrace + Debug>(&mut self, mut reference: GcRef<T>) {
         unsafe {
             reference.pointer.as_mut().is_marked = true;
-            self.grey_stack.push_front(reference.pointer);
+            self.grey_stack.push(reference.pointer);
             #[cfg(feature = "debug_log_gc")]
             println!(
                 "mark(adr:{:?}, type:{}, val:{:?})",
