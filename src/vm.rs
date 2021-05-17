@@ -8,7 +8,7 @@ use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
-use std::{fmt, ptr::{null_mut}};
+use std::{fmt, ptr::{null, null_mut}};
 
 pub struct Vm {
     gc: Gc,
@@ -32,7 +32,7 @@ impl Vm {
 
         Self {
             gc,
-            frames: [CallFrame { closure: GcRef::dangling(), ip: 0, slot: 0 }; Vm::MAX_FRAMES],
+            frames: [CallFrame { closure: GcRef::dangling(), ip: null(), slot: 0 }; Vm::MAX_FRAMES],
             frame_count: 0,
             stack: [Value::Nil; Vm::STACK_SIZE],
             stack_top: null_mut(),
@@ -104,11 +104,8 @@ impl Vm {
 
     fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
         let current_frame = &self.frames[self.frame_count - 1];
-        let current_chunk = &current_frame.closure.function.chunk;
-
         eprintln!("{}", msg);
-        let line = current_chunk.lines[(*current_frame).ip - 1];
-        eprintln!("[line {}] in script", line);
+        eprintln!("[line {}] in script", current_frame.line());
         Err(LoxError::RuntimeError)
     }
 
@@ -129,15 +126,15 @@ impl Vm {
             unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
         let mut current_chunk = &current_frame.closure.function.chunk;
         loop {
-            let instruction = current_chunk.code[current_frame.ip];
+            let instruction = unsafe { *current_frame.ip };
 
             #[cfg(feature = "debug_trace_execution")]
             {
                 let dis = crate::chunk::Disassembler::new(current_chunk, Some(&self.stack[0..self.stack_len()]));
-                dis.instruction(&instruction, current_frame.ip);
+                dis.instruction(&instruction, current_frame.offset());
             }
 
-            current_frame.ip += 1;
+            current_frame.ip = unsafe { current_frame.ip.offset(1) };
 
             match instruction {
                 Instruction::Add => {
@@ -289,16 +286,16 @@ impl Vm {
                     current_chunk = &current_frame.closure.function.chunk;
                 }
                 Instruction::Jump(offset) => {
-                    current_frame.ip += offset as usize;
+                    current_frame.ip = unsafe { current_frame.ip.offset(offset as isize) };
                 }
                 Instruction::JumpIfFalse(offset) => {
                     if self.peek(0).is_falsey() {
-                        current_frame.ip += offset as usize;
+                        current_frame.ip = unsafe { current_frame.ip.offset(offset as isize) };
                     }
                 }
                 Instruction::Less => self.binary_op(|a, b| a < b, Value::Bool)?,
                 Instruction::Loop(offset) => {
-                    current_frame.ip -= offset as usize + 1;
+                    current_frame.ip = unsafe { current_frame.ip.offset(-1-(offset as isize)) };
                 }
                 Instruction::Method(constant) => {
                     let method_name = current_chunk.read_string(constant);
@@ -414,7 +411,9 @@ impl Vm {
                 }
                 Ok(())
             }
-            Value::Closure(closure) => self.call(closure, arg_count),
+            Value::Closure(closure) => {
+                self.call(closure, arg_count)
+            },
             Value::NativeFunction(native) => {
                 let left = self.stack_len() - arg_count;
                 let result = native.0(&self, &self.stack[left..]);
@@ -555,11 +554,11 @@ impl Vm {
     }
 
     fn mark_roots(&mut self) {
-        for &value in &self.stack {
+        for &value in &self.stack[0..self.stack_len()] {
             self.gc.mark_value(value);
         }
 
-        for frame in &self.frames {
+        for frame in &self.frames[..self.frame_count] {
             self.gc.mark_object(frame.closure)
         }
 
@@ -576,7 +575,7 @@ impl Vm {
 #[derive(Clone, Copy)]
 struct CallFrame {
     closure: GcRef<Closure>,
-    ip: usize,
+    ip: *const Instruction,
     slot: usize,
 }
 
@@ -584,9 +583,21 @@ impl CallFrame {
     fn new(closure: GcRef<Closure>, slot: usize) -> Self {
         CallFrame {
             closure,
-            ip: 0,
+            ip: closure.function.chunk.code.as_ptr(),
             slot,
         }
+    }
+
+    fn offset(&self) -> usize {
+        unsafe {
+            let chunk = &self.closure.function.chunk;
+            let pos = self.ip.offset_from(chunk.code.as_ptr());
+            pos as usize
+        }
+    }
+
+    fn line(&self) -> usize {
+        self.closure.function.chunk.lines[self.offset() - 1]
     }
 }
 
