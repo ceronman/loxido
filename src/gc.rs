@@ -32,7 +32,7 @@ pub struct GcRef<T: GcTrace + ?Sized + 'static> {
 impl<T: GcTrace> GcRef<T> {
     pub fn dangling() -> GcRef<T> {
         GcRef {
-           pointer: NonNull::dangling()
+            pointer: NonNull::dangling(),
         }
     }
 }

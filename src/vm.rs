@@ -8,7 +8,10 @@ use crate::{
     gc::{Gc, GcRef, GcTrace},
     objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
-use std::{fmt, ptr::{null, null_mut}};
+use std::{
+    fmt,
+    ptr::{null, null_mut},
+};
 
 pub struct Vm {
     gc: Gc,
@@ -32,7 +35,11 @@ impl Vm {
 
         Self {
             gc,
-            frames: [CallFrame { closure: GcRef::dangling(), ip: null(), slot: 0 }; Vm::MAX_FRAMES],
+            frames: [CallFrame {
+                closure: GcRef::dangling(),
+                ip: null(),
+                slot: 0,
+            }; Vm::MAX_FRAMES],
             frame_count: 0,
             stack: [Value::Nil; Vm::STACK_SIZE],
             stack_top: null_mut(),
@@ -73,26 +80,20 @@ impl Vm {
     }
 
     fn peek(&self, n: usize) -> Value {
-        unsafe {
-            *self.stack_top.offset(-1 - n as isize)
-        }
+        unsafe { *self.stack_top.offset(-1 - n as isize) }
     }
 
     fn stack_truncate(&mut self, index: usize) {
-        unsafe {
-            self.stack_top = self.stack.as_mut_ptr().offset(index as isize)
-        }
+        unsafe { self.stack_top = self.stack.as_mut_ptr().add(index) }
     }
 
     fn stack_len(&self) -> usize {
-        unsafe {
-            self.stack_top.offset_from(self.stack.as_ptr()) as usize
-        }
+        unsafe { self.stack_top.offset_from(self.stack.as_ptr()) as usize }
     }
 
     fn set_at(&mut self, n: usize, value: Value) {
         unsafe {
-            let pos = self.stack_top.offset(-1 -(n as isize));
+            let pos = self.stack_top.offset(-1 - (n as isize));
             *pos = value
         }
     }
@@ -130,7 +131,10 @@ impl Vm {
 
             #[cfg(feature = "debug_trace_execution")]
             {
-                let dis = crate::chunk::Disassembler::new(current_chunk, Some(&self.stack[0..self.stack_len()]));
+                let dis = crate::chunk::Disassembler::new(
+                    current_chunk,
+                    Some(&self.stack[0..self.stack_len()]),
+                );
                 dis.instruction(&instruction, current_frame.offset());
             }
 
@@ -295,7 +299,7 @@ impl Vm {
                 }
                 Instruction::Less => self.binary_op(|a, b| a < b, Value::Bool)?,
                 Instruction::Loop(offset) => {
-                    current_frame.ip = unsafe { current_frame.ip.offset(-1-(offset as isize)) };
+                    current_frame.ip = unsafe { current_frame.ip.offset(-1 - (offset as isize)) };
                 }
                 Instruction::Method(constant) => {
                     let method_name = current_chunk.read_string(constant);
@@ -332,8 +336,9 @@ impl Vm {
                         self.stack_truncate(current_frame.slot);
                         self.push(return_value);
 
-                        current_frame =
-                            unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
+                        current_frame = unsafe {
+                            &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame)
+                        };
                         current_chunk = &current_frame.closure.function.chunk;
                     }
                 }
@@ -376,8 +381,9 @@ impl Vm {
                     let method_name = current_chunk.read_string(constant);
                     if let Value::Class(class) = self.pop() {
                         self.invoke_from_class(class, method_name, arg_count as usize)?;
-                        current_frame =
-                            unsafe { &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame) };
+                        current_frame = unsafe {
+                            &mut *(&mut self.frames[self.frame_count - 1] as *mut CallFrame)
+                        };
                         current_chunk = &current_frame.closure.function.chunk;
                     } else {
                         panic!("super invoke with no class");
@@ -411,9 +417,7 @@ impl Vm {
                 }
                 Ok(())
             }
-            Value::Closure(closure) => {
-                self.call(closure, arg_count)
-            },
+            Value::Closure(closure) => self.call(closure, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack_len() - arg_count;
                 let result = native.0(&self, &self.stack[left..]);
@@ -570,7 +574,6 @@ impl Vm {
         self.gc.mark_object(self.init_string);
     }
 }
-
 
 #[derive(Clone, Copy)]
 struct CallFrame {
