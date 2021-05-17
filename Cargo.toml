@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Manuel Cerón <ceronman@gmail.com>"]
 edition = "2018"
 
+[profile.release]
+# debug = true
+# lto = true
+
 [features]
 default = []
 debug_log_gc = []

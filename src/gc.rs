@@ -200,8 +200,7 @@ impl Gc {
             println!(
                 "mark(adr:{:?}, type:{}, val:{:?})",
                 reference.pointer,
-                short_type_name::<T>(),
-                &reference.pointer.as_ref().value
+                short_type_name::<T>()
             );
         }
     }
@@ -224,14 +223,22 @@ impl Gc {
     }
 
     fn sweep(&mut self) {
-        while let Some(mut object) = self.first {
+        let mut previous: Option<NonNull<GcBox<dyn GcTrace>>> = None;
+        let mut current: Option<NonNull<GcBox<dyn GcTrace>>> = self.first;
+        while let Some(mut object) = current {
             unsafe {
-                let object = object.as_mut();
-                self.first = object.next;
-                if object.is_marked {
-                    object.is_marked = false;
+                let object_ptr = object.as_mut();
+                current = object_ptr.next;
+                if object_ptr.is_marked {
+                    object_ptr.is_marked = false;
+                    previous = Some(object);
                 } else {
-                    let boxed = Box::from_raw(object);
+                    if let Some(mut previous) = previous {
+                        previous.as_mut().next = object_ptr.next
+                    } else {
+                        self.first = object_ptr.next
+                    }
+                    let boxed = Box::from_raw(object_ptr);
                     self.bytes_allocated -= boxed.size;
                 }
             }
