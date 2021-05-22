@@ -1,21 +1,58 @@
 use std::{
-    fmt::{self, Debug},
-    mem,
+    fmt::{self, Debug, Display},
+    hint::unreachable_unchecked,
     ops::Deref,
 };
 
 use crate::{
     chunk::Chunk,
-    chunk::{Instruction, Table, Value},
-    gc::{Gc, GcRef, GcTrace},
+    chunk::{Table, Value},
+    gc::{GcObject, GcRef},
     vm::Vm,
 };
 
-impl GcTrace for String {
-    fn size(&self) -> usize {
-        mem::size_of::<String>() + self.as_bytes().len()
+pub enum ObjectType {
+    Function(Function),
+    Closure(Closure),
+    String(String),
+    Upvalue(Upvalue),
+    Class(Class),
+    Instance(Instance),
+    BoundMethod(BoundMethod),
+}
+
+impl GcObject for String {
+    fn into_object(self) -> ObjectType {
+        ObjectType::String(self)
     }
-    fn trace(&self, _gc: &mut Gc) {}
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::String(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::String(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+}
+
+impl Display for ObjectType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ObjectType::BoundMethod(value) => write!(f, "{}", value.method.function.deref()),
+            ObjectType::Class(value) => write!(f, "{}", value.name.deref()),
+            ObjectType::Closure(value) => write!(f, "{}", value.function.deref()),
+            ObjectType::Function(value) => write!(f, "{}", value.name.deref()),
+            ObjectType::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
+            ObjectType::String(value) => write!(f, "{}", value.deref()),
+            ObjectType::Upvalue(_) => write!(f, "upvalue"),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -57,39 +94,36 @@ impl Function {
     }
 }
 
-impl fmt::Debug for Function {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<fn {:?}>", self.name)
-    }
-}
-
-impl fmt::Display for Function {
+impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.name.deref() == "script" {
             write!(f, "<script>")
         } else {
-            write!(f, "<fn {}>", self.name)
+            write!(f, "<fn {}>", self.name.deref())
         }
     }
 }
 
-impl GcTrace for Function {
-    fn size(&self) -> usize {
-        mem::size_of::<Function>()
-            + self.upvalues.capacity() * mem::size_of::<FunctionUpvalue>()
-            + self.chunk.code.capacity() * mem::size_of::<Instruction>()
-            + self.chunk.constants.capacity() * mem::size_of::<Value>()
-            + self.chunk.constants.capacity() * mem::size_of::<usize>()
+impl GcObject for Function {
+    fn into_object(self) -> ObjectType {
+        ObjectType::Function(self)
     }
-    fn trace(&self, gc: &mut Gc) {
-        gc.mark_object(self.name);
-        for &constant in &self.chunk.constants {
-            gc.mark_value(constant);
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::Function(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::Function(f) => f,
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
 
-#[derive(Debug)]
 pub struct Upvalue {
     pub location: usize,
     pub closed: Option<Value>,
@@ -104,13 +138,22 @@ impl Upvalue {
     }
 }
 
-impl GcTrace for Upvalue {
-    fn size(&self) -> usize {
-        mem::size_of::<Upvalue>()
+impl GcObject for Upvalue {
+    fn into_object(self) -> ObjectType {
+        ObjectType::Upvalue(self)
     }
-    fn trace(&self, gc: &mut Gc) {
-        if let Some(obj) = self.closed {
-            gc.mark_value(obj)
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::Upvalue(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::Upvalue(f) => f,
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
@@ -129,25 +172,26 @@ impl Closure {
     }
 }
 
-impl fmt::Debug for Closure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<fn {:?}>", self.function)
+impl GcObject for Closure {
+    fn into_object(self) -> ObjectType {
+        ObjectType::Closure(self)
     }
-}
 
-impl GcTrace for Closure {
-    fn size(&self) -> usize {
-        mem::size_of::<Closure>() + self.upvalues.capacity() * mem::size_of::<GcRef<Upvalue>>()
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::Closure(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
     }
-    fn trace(&self, gc: &mut Gc) {
-        gc.mark_object(self.function);
-        for &upvalue in &self.upvalues {
-            gc.mark_object(upvalue);
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::Closure(f) => f,
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
 
-#[derive(Debug)]
 pub struct Class {
     pub name: GcRef<String>,
     pub methods: Table,
@@ -162,17 +206,26 @@ impl Class {
     }
 }
 
-impl GcTrace for Class {
-    fn size(&self) -> usize {
-        mem::size_of::<Class>()
+impl GcObject for Class {
+    fn into_object(self) -> ObjectType {
+        ObjectType::Class(self)
     }
-    fn trace(&self, gc: &mut Gc) {
-        gc.mark_object(self.name);
-        gc.mark_table(&self.methods);
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::Class(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::Class(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
     }
 }
 
-#[derive(Debug)]
 pub struct Instance {
     pub class: GcRef<Class>,
     pub fields: Table,
@@ -187,18 +240,26 @@ impl Instance {
     }
 }
 
-impl GcTrace for Instance {
-    fn size(&self) -> usize {
-        mem::size_of::<Instance>()
-            + self.fields.capacity() * (mem::size_of::<GcRef<String>>() + mem::size_of::<Value>())
+impl GcObject for Instance {
+    fn into_object(self) -> ObjectType {
+        ObjectType::Instance(self)
     }
-    fn trace(&self, gc: &mut Gc) {
-        gc.mark_object(self.class);
-        gc.mark_table(&self.fields);
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::Instance(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::Instance(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
     }
 }
 
-#[derive(Debug)]
 pub struct BoundMethod {
     pub receiver: Value,
     pub method: GcRef<Closure>,
@@ -210,12 +271,22 @@ impl BoundMethod {
     }
 }
 
-impl GcTrace for BoundMethod {
-    fn size(&self) -> usize {
-        mem::size_of::<BoundMethod>()
+impl GcObject for BoundMethod {
+    fn into_object(self) -> ObjectType {
+        ObjectType::BoundMethod(self)
     }
-    fn trace(&self, gc: &mut Gc) {
-        gc.mark_value(self.receiver);
-        gc.mark_object(self.method);
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::BoundMethod(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::BoundMethod(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
     }
 }

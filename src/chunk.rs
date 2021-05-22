@@ -1,12 +1,15 @@
 use ahash::AHashMap;
 
 use crate::{
-    gc::{Gc, GcRef, GcTrace},
+    gc::GcRef,
     objects::{BoundMethod, Class, Closure, Function, Instance, NativeFunction},
 };
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    ops::Deref,
+};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Value {
     Bool(bool),
     BoundMethod(GcRef<BoundMethod>),
@@ -34,11 +37,11 @@ impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Bool(value) => write!(f, "{}", value),
-            Value::BoundMethod(value) => write!(f, "{}", value.method.function),
-            Value::Class(value) => write!(f, "{}", value.name),
-            Value::Closure(value) => write!(f, "{}", value.function),
-            Value::Function(value) => write!(f, "{}", value.name),
-            Value::Instance(value) => write!(f, "{} instance", value.class.name),
+            Value::BoundMethod(value) => write!(f, "{}", value.method.function.deref()),
+            Value::Class(value) => write!(f, "{}", value.name.deref()),
+            Value::Closure(value) => write!(f, "{}", value.function.deref()),
+            Value::Function(value) => write!(f, "{}", value.name.deref()),
+            Value::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
             Value::Number(value) => {
@@ -49,24 +52,7 @@ impl Display for Value {
                     write!(f, "{}", value)
                 }
             }
-            Value::String(value) => write!(f, "{}", value),
-        }
-    }
-}
-
-impl GcTrace for Value {
-    fn size(&self) -> usize {
-        0
-    }
-    fn trace(&self, gc: &mut Gc) {
-        match self {
-            Value::BoundMethod(value) => gc.mark_object(*value),
-            Value::Class(value) => gc.mark_object(*value),
-            Value::Closure(value) => gc.mark_object(*value),
-            Value::Function(value) => gc.mark_object(*value),
-            Value::Instance(value) => gc.mark_object(*value),
-            Value::String(value) => gc.mark_object(*value),
-            _ => (),
+            Value::String(value) => write!(f, "{}", value.deref()),
         }
     }
 }
@@ -114,7 +100,6 @@ pub enum Instruction {
     True,
 }
 
-#[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instruction>,
     pub constants: Vec<Value>,

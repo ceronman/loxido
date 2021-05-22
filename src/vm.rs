@@ -1,15 +1,14 @@
 use cpu_time::ProcessTime;
-use fmt::Debug;
 
 use crate::{
     chunk::{Instruction, Table, Value},
     compiler::compile,
     error::LoxError,
-    gc::{Gc, GcRef, GcTrace},
+    gc::{Gc, GcObject, GcRef},
     objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
 };
 use std::{
-    fmt,
+    ops::Deref,
     ptr::{null, null_mut},
 };
 
@@ -149,7 +148,7 @@ impl Vm {
                         }
 
                         (Value::String(a), Value::String(b)) => {
-                            let result = format!("{}{}", a, b);
+                            let result = format!("{}{}", a.deref(), b.deref());
                             let result = self.intern(result);
                             let value = Value::String(result);
                             self.push(value);
@@ -224,7 +223,7 @@ impl Vm {
                     match self.globals.get(&global_name) {
                         Some(&value) => self.push(value),
                         None => {
-                            let msg = format!("Undefined variable '{}'.", global_name);
+                            let msg = format!("Undefined variable '{}'.", global_name.deref());
                             return self.runtime_error(&msg);
                         }
                     }
@@ -347,7 +346,7 @@ impl Vm {
                     let value = self.peek(0);
                     if self.globals.insert(global_name, value).is_none() {
                         self.globals.remove(&global_name);
-                        let msg = format!("Undefined variable '{}'.", global_name);
+                        let msg = format!("Undefined variable '{}'.", global_name.deref());
                         return self.runtime_error(&msg);
                     }
                 }
@@ -475,7 +474,7 @@ impl Vm {
                 panic!("Got method that is not closure!")
             }
         } else {
-            let msg = format!("Undefined property '{}'.", name);
+            let msg = format!("Undefined property '{}'.", name.deref());
             self.runtime_error(&msg)
         }
     }
@@ -493,7 +492,7 @@ impl Vm {
             self.push(Value::BoundMethod(bound));
             Ok(())
         } else {
-            let msg = format!("Undefined property '{}'.", name);
+            let msg = format!("Undefined property '{}'.", name.deref());
             self.runtime_error(&msg)
         }
     }
@@ -534,7 +533,7 @@ impl Vm {
         }
     }
 
-    fn alloc<T: GcTrace + 'static + Debug>(&mut self, object: T) -> GcRef<T> {
+    fn alloc<T: GcObject + 'static>(&mut self, object: T) -> GcRef<T> {
         self.mark_and_sweep();
         self.gc.alloc(object)
     }

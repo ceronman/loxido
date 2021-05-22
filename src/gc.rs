@@ -1,85 +1,78 @@
+use std::alloc;
+use std::ptr::NonNull;
 use std::{
-    fmt::{self, Display},
     hash,
-};
-use std::{
+    marker::PhantomData,
     ops::{Deref, DerefMut},
-    ptr::NonNull,
+    sync::atomic::AtomicUsize,
+    usize,
 };
 
 use ahash::AHashMap;
-use fmt::Debug;
 
-use crate::chunk::{Table, Value};
+use crate::{
+    chunk::{Table, Value},
+    objects::ObjectType,
+};
 
-pub trait GcTrace {
-    fn size(&self) -> usize;
-    fn trace(&self, gc: &mut Gc);
+struct GcHeader {
+    marked: bool,
+    next: Option<NonNull<GcHeader>>,
+    object: ObjectType,
+}
+pub trait GcObject {
+    fn into_object(self) -> ObjectType;
+    fn unwrap_ref(obj: &ObjectType) -> &Self;
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self;
 }
 
-struct GcBox<T: GcTrace + ?Sized + 'static> {
-    is_marked: bool,
-    next: Option<NonNull<GcBox<dyn GcTrace>>>,
-    size: usize,
-    value: T,
+pub struct GcRef<T> {
+    header: NonNull<GcHeader>,
+    _marker: PhantomData<T>,
 }
 
-pub struct GcRef<T: GcTrace + ?Sized + 'static> {
-    pointer: NonNull<GcBox<T>>,
-}
-
-impl<T: GcTrace> GcRef<T> {
+impl<T> GcRef<T> {
     pub fn dangling() -> GcRef<T> {
         GcRef {
-            pointer: NonNull::dangling(),
+            header: NonNull::dangling(),
+            _marker: PhantomData,
         }
     }
 }
 
-impl<T: GcTrace> Copy for GcRef<T> {}
+impl<T: GcObject> Deref for GcRef<T> {
+    type Target = T;
 
-impl<T: GcTrace> Clone for GcRef<T> {
+    fn deref(&self) -> &Self::Target {
+        unsafe { T::unwrap_ref(&self.header.as_ref().object) }
+    }
+}
+
+impl<T: GcObject> DerefMut for GcRef<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { T::unwrap_mut(&mut self.header.as_mut().object) }
+    }
+}
+
+impl<T> Copy for GcRef<T> {}
+
+impl<T> Clone for GcRef<T> {
     fn clone(&self) -> GcRef<T> {
         *self
     }
 }
 
-impl<T: GcTrace> Deref for GcRef<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        unsafe { &self.pointer.as_ref().value }
-    }
-}
+impl<T> Eq for GcRef<T> {}
 
-impl<T: GcTrace> DerefMut for GcRef<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut self.pointer.as_mut().value }
-    }
-}
-
-impl<T: GcTrace> Eq for GcRef<T> {}
-
-impl<T: GcTrace> PartialEq for GcRef<T> {
+impl<T> PartialEq for GcRef<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.pointer == other.pointer
+        self.header == other.header
     }
 }
 
 impl hash::Hash for GcRef<String> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.pointer.hash(state)
-    }
-}
-
-impl<T: GcTrace + Debug> Debug for GcRef<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe { self.pointer.as_ref().value.fmt(f) }
-    }
-}
-
-impl<T: GcTrace + Display> Display for GcRef<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe { write!(f, "{}", self.pointer.as_ref().value) }
+        self.header.hash(state)
     }
 }
 
@@ -90,11 +83,10 @@ fn short_type_name<T: std::any::Any>() -> &'static str {
 }
 
 pub struct Gc {
-    bytes_allocated: usize,
     next_gc: usize,
-    first: Option<NonNull<GcBox<dyn GcTrace>>>,
+    first: Option<NonNull<GcHeader>>,
     strings: AHashMap<&'static str, GcRef<String>>,
-    grey_stack: Vec<NonNull<GcBox<dyn GcTrace>>>,
+    grey_stack: Vec<NonNull<GcHeader>>,
 }
 
 impl Gc {
@@ -102,7 +94,6 @@ impl Gc {
 
     pub fn new() -> Self {
         Gc {
-            bytes_allocated: 0,
             next_gc: 1024 * 1024,
             first: None,
             strings: AHashMap::new(),
@@ -110,37 +101,36 @@ impl Gc {
         }
     }
 
-    pub fn alloc<T: GcTrace + Debug>(&mut self, obj: T) -> GcRef<T> {
-        #[cfg(feature = "debug_log_gc")]
-        let repr = format!("{:?}", obj)
-            .chars()
-            .into_iter()
-            .take(32)
-            .collect::<String>();
-        let size = obj.size();
+    pub fn alloc<T: GcObject + 'static>(&mut self, object: T) -> GcRef<T> {
         unsafe {
-            let boxed = Box::new(GcBox {
-                is_marked: false,
+            let header = Box::new(GcHeader {
+                marked: false,
                 next: self.first.take(),
-                size,
-                value: obj,
+                object: object.into_object(),
             });
-            self.bytes_allocated += size;
-            let pointer = NonNull::new_unchecked(Box::into_raw(boxed));
-            self.first = Some(pointer);
+            #[cfg(feature = "debug_log_gc")]
+            let repr = format!("{}", header.object)
+                .chars()
+                .into_iter()
+                .take(32)
+                .collect::<String>();
+            let header = NonNull::new_unchecked(Box::into_raw(header));
+            self.first = Some(header);
 
             #[cfg(feature = "debug_log_gc")]
             println!(
-                "alloc(adr:{:?} type:{} repr:{}, size:{} total:{} next:{})",
-                pointer,
+                "alloc(adr:{:?} type:{} repr:{}, allocated bytes:{} next:{})",
+                header,
                 short_type_name::<T>(),
                 repr,
-                size,
-                self.bytes_allocated,
+                GLOBAL.bytes_allocated(),
                 self.next_gc,
             );
 
-            GcRef { pointer }
+            GcRef {
+                header,
+                _marker: PhantomData,
+            }
         }
     }
 
@@ -157,19 +147,19 @@ impl Gc {
 
     pub fn collect_garbage(&mut self) {
         #[cfg(feature = "debug_log_gc")]
-        let before = self.bytes_allocated;
+        let before: isize = GLOBAL.bytes_allocated() as isize;
 
         self.trace_references();
         self.remove_white_strings();
         self.sweep();
-        self.next_gc = self.bytes_allocated * Gc::HEAP_GROW_FACTOR;
+        self.next_gc = GLOBAL.bytes_allocated() * Gc::HEAP_GROW_FACTOR;
 
         #[cfg(feature = "debug_log_gc")]
         println!(
             "collected(bytes:{} before:{} after:{} next:{})",
-            before - self.bytes_allocated,
+            before - GLOBAL.bytes_allocated() as isize,
             before,
-            self.bytes_allocated,
+            GLOBAL.bytes_allocated(),
             self.next_gc
         );
     }
@@ -180,26 +170,67 @@ impl Gc {
         }
     }
 
-    fn blacken_object(&mut self, pointer: NonNull<GcBox<dyn GcTrace>>) {
-        let object = unsafe { &pointer.as_ref().value };
+    fn blacken_object(&mut self, pointer: NonNull<GcHeader>) {
+        let object = unsafe { &pointer.as_ref().object };
         #[cfg(feature = "debug_log_gc")]
-        println!("blacken(ptr:{:?})", pointer);
-        object.trace(self);
+        println!("blacken(adr:{:?})", pointer);
+
+        match object {
+            ObjectType::Function(function) => {
+                self.mark_object(function.name);
+                for &constant in &function.chunk.constants {
+                    self.mark_value(constant);
+                }
+            }
+            ObjectType::Closure(closure) => {
+                self.mark_object(closure.function);
+                for &upvalue in &closure.upvalues {
+                    self.mark_object(upvalue);
+                }
+            }
+            ObjectType::String(_) => {}
+            ObjectType::Upvalue(upvalue) => {
+                if let Some(obj) = upvalue.closed {
+                    self.mark_value(obj)
+                }
+            }
+            ObjectType::Class(class) => {
+                self.mark_object(class.name);
+                self.mark_table(&class.methods);
+            }
+            ObjectType::Instance(instance) => {
+                self.mark_object(instance.class);
+                self.mark_table(&instance.fields);
+            }
+            ObjectType::BoundMethod(method) => {
+                self.mark_value(method.receiver);
+                self.mark_object(method.method);
+            }
+        }
     }
 
     pub fn mark_value(&mut self, value: Value) {
-        value.trace(self);
+        match value {
+            Value::BoundMethod(value) => self.mark_object(value),
+            Value::Class(value) => self.mark_object(value),
+            Value::Closure(value) => self.mark_object(value),
+            Value::Function(value) => self.mark_object(value),
+            Value::Instance(value) => self.mark_object(value),
+            Value::String(value) => self.mark_object(value),
+            _ => (),
+        }
     }
 
-    pub fn mark_object<T: GcTrace + Debug>(&mut self, mut reference: GcRef<T>) {
+    pub fn mark_object<T: GcObject + 'static>(&mut self, mut reference: GcRef<T>) {
         unsafe {
-            reference.pointer.as_mut().is_marked = true;
-            self.grey_stack.push(reference.pointer);
+            reference.header.as_mut().marked = true;
+            self.grey_stack.push(reference.header);
             #[cfg(feature = "debug_log_gc")]
             println!(
-                "mark(adr:{:?}, type:{}, val:{:?})",
-                reference.pointer,
-                short_type_name::<T>()
+                "mark(adr:{:?}, type:{}, val:{})",
+                reference.header,
+                short_type_name::<T>(),
+                reference.header.as_ref().object
             );
         }
     }
@@ -218,18 +249,18 @@ impl Gc {
 
     #[cfg(not(feature = "debug_stress_gc"))]
     pub fn should_gc(&self) -> bool {
-        self.bytes_allocated > self.next_gc
+        GLOBAL.bytes_allocated() > self.next_gc
     }
 
     fn sweep(&mut self) {
-        let mut previous: Option<NonNull<GcBox<dyn GcTrace>>> = None;
-        let mut current: Option<NonNull<GcBox<dyn GcTrace>>> = self.first;
+        let mut previous: Option<NonNull<GcHeader>> = None;
+        let mut current: Option<NonNull<GcHeader>> = self.first;
         while let Some(mut object) = current {
             unsafe {
                 let object_ptr = object.as_mut();
                 current = object_ptr.next;
-                if object_ptr.is_marked {
-                    object_ptr.is_marked = false;
+                if object_ptr.marked {
+                    object_ptr.marked = false;
                     previous = Some(object);
                 } else {
                     if let Some(mut previous) = previous {
@@ -237,8 +268,9 @@ impl Gc {
                     } else {
                         self.first = object_ptr.next
                     }
-                    let boxed = Box::from_raw(object_ptr);
-                    self.bytes_allocated -= boxed.size;
+                    #[cfg(feature = "debug_log_gc")]
+                    println!("free(adr:{:?})", object_ptr as *mut GcHeader);
+                    Box::from_raw(object_ptr);
                 }
             }
         }
@@ -246,6 +278,36 @@ impl Gc {
 
     fn remove_white_strings(&mut self) {
         self.strings
-            .retain(|_k, v| unsafe { v.pointer.as_ref().is_marked });
+            .retain(|_k, v| unsafe { v.header.as_ref().marked });
     }
 }
+
+struct GlobalAllocator {
+    bytes_allocated: AtomicUsize,
+}
+
+impl GlobalAllocator {
+    fn bytes_allocated(&self) -> usize {
+        self.bytes_allocated
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+unsafe impl alloc::GlobalAlloc for GlobalAllocator {
+    unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
+        self.bytes_allocated
+            .fetch_add(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        alloc::System.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: alloc::Layout) {
+        alloc::System.dealloc(ptr, layout);
+        self.bytes_allocated
+            .fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+#[global_allocator]
+static GLOBAL: GlobalAllocator = GlobalAllocator {
+    bytes_allocated: AtomicUsize::new(0),
+};
