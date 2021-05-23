@@ -1,4 +1,4 @@
-use ahash::AHashMap;
+use fxhash::FxHashMap;
 
 use crate::{
     chunk::{Instruction, Value},
@@ -199,12 +199,12 @@ struct Parser<'sourcecode> {
     had_error: bool,
     panic_mode: bool,
     resolver_errors: Vec<&'static str>,
-    rules: AHashMap<TokenType, ParseRule<'sourcecode>>,
+    rules: FxHashMap<TokenType, ParseRule<'sourcecode>>,
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
     fn new(code: &'sourcecode str, gc: &'sourcecode mut Gc) -> Parser<'sourcecode> {
-        let mut rules = AHashMap::new();
+        let mut rules = FxHashMap::default();
 
         let mut rule = |kind, prefix, infix, precedence| {
             rules.insert(kind, ParseRule::new(prefix, infix, precedence));

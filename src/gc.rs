@@ -8,7 +8,7 @@ use std::{
     usize,
 };
 
-use ahash::AHashMap;
+use fxhash::FxHashMap;
 
 use crate::{
     chunk::{Table, Value},
@@ -85,7 +85,7 @@ fn short_type_name<T: std::any::Any>() -> &'static str {
 pub struct Gc {
     next_gc: usize,
     first: Option<NonNull<GcHeader>>,
-    strings: AHashMap<&'static str, GcRef<String>>,
+    strings: FxHashMap<&'static str, GcRef<String>>,
     grey_stack: Vec<NonNull<GcHeader>>,
 }
 
@@ -96,7 +96,7 @@ impl Gc {
         Gc {
             next_gc: 1024 * 1024,
             first: None,
-            strings: AHashMap::new(),
+            strings: FxHashMap::default(),
             grey_stack: Vec::new(),
         }
     }

@@ -42,7 +42,7 @@ impl Vm {
             frame_count: 0,
             stack: [Value::Nil; Vm::STACK_SIZE],
             stack_top: null_mut(),
-            globals: Table::new(),
+            globals: Table::default(),
             open_upvalues: Vec::with_capacity(Vm::STACK_SIZE),
             init_string,
             start_time: ProcessTime::now(),

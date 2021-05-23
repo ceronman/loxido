@@ -1,4 +1,4 @@
-use ahash::AHashMap;
+use fxhash::FxHashMap;
 
 use crate::{
     gc::GcRef,
@@ -57,7 +57,7 @@ impl Display for Value {
     }
 }
 
-pub type Table = AHashMap<GcRef<String>, Value>;
+pub type Table = FxHashMap<GcRef<String>, Value>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {
