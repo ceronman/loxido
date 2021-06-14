@@ -4,6 +4,7 @@ mod error;
 mod gc;
 mod objects;
 mod scanner;
+mod table;
 mod vm;
 
 use error::LoxError;

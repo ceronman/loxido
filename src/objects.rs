@@ -15,10 +15,59 @@ pub enum ObjectType {
     Function(Function),
     Closure(Closure),
     String(String),
+    LoxString(LoxString),
     Upvalue(Upvalue),
     Class(Class),
     Instance(Instance),
     BoundMethod(BoundMethod),
+}
+pub struct LoxString {
+    pub s: String,
+    pub hash: usize,
+}
+
+impl LoxString {
+    pub fn new(s: &str) -> Self {
+        LoxString {
+            s: s.to_owned(),
+            hash: LoxString::hash_string(s),
+        }
+    }
+
+    fn hash_string(s: &str) -> usize {
+        let mut hash: usize = 2166136261;
+        for b in s.bytes() {
+            hash ^= b as usize;
+            hash = hash.wrapping_mul(16777619);
+        }
+        hash
+    }
+}
+
+impl GcObject for LoxString {
+    fn into_object(self) -> ObjectType {
+        ObjectType::LoxString(self)
+    }
+
+    fn unwrap_ref(obj: &ObjectType) -> &Self {
+        match obj {
+            ObjectType::LoxString(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
+        match obj {
+            ObjectType::LoxString(f) => f,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+}
+
+impl Display for LoxString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.s)
+    }
 }
 
 impl GcObject for String {
@@ -50,6 +99,7 @@ impl Display for ObjectType {
             ObjectType::Function(value) => write!(f, "{}", value.name.deref()),
             ObjectType::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
             ObjectType::String(value) => write!(f, "{}", value.deref()),
+            ObjectType::LoxString(value) => write!(f, "{}", value.deref()),
             ObjectType::Upvalue(_) => write!(f, "upvalue"),
         }
     }

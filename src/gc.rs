@@ -189,6 +189,7 @@ impl Gc {
                 }
             }
             ObjectType::String(_) => {}
+            ObjectType::LoxString(_) => {}
             ObjectType::Upvalue(upvalue) => {
                 if let Some(obj) = upvalue.closed {
                     self.mark_value(obj)
