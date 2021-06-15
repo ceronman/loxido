@@ -78,6 +78,13 @@ impl Table {
         }
     }
 
+    fn iter(&self) -> IterTable {
+        IterTable {
+            ptr: self.entries,
+            end: unsafe { self.entries.offset(self.capacity as isize) },
+        }
+    }
+
     fn add_all(&mut self, other: &Table) {
         unsafe {
             for i in 0..(other.capacity as isize) {
@@ -190,8 +197,32 @@ impl Drop for Table {
     }
 }
 
+struct IterTable {
+    ptr: *mut Entry,
+    end: *const Entry,
+}
+
+impl Iterator for IterTable {
+    type Item = &'static Entry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.ptr as *const Entry != self.end {
+            unsafe {
+                let entry = self.ptr;
+                self.ptr = self.ptr.offset(1);
+                if (*entry).key.is_some() {
+                    return Some(&*entry);
+                }
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::{LoxString, Table};
     use crate::{
         chunk::Value,
@@ -302,8 +333,31 @@ mod tests {
         let mut gc = Gc::new();
         let mut table = Table::new();
         let foo = gc.alloc(LoxString::new("foo"));
-        assert!(unsafe { table.find_string(&foo.s, foo.hash).is_none() });
+        assert!(table.find_string(&foo.s, foo.hash).is_none());
         table.set(foo, Value::Nil);
         assert!(matches!(table.find_string(&foo.s, foo.hash), Some(foo)));
+    }
+
+    #[test]
+    fn iter() {
+        let mut gc = Gc::new();
+        let mut table = Table::new();
+
+        for i in 0..32 {
+            let k = gc.alloc(LoxString::new(&format!("{}", i)));
+            table.set(k, Value::Number(i as f64));
+        }
+
+        let mut numbers: HashSet<isize> = (0..32).collect();
+
+        for entry in table.iter() {
+            if let Value::Number(x) = entry.value {
+                numbers.remove(&(x as isize));
+            } else {
+                panic!("No value")
+            }
+        }
+
+        assert!(numbers.is_empty())
     }
 }
