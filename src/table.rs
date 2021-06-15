@@ -10,7 +10,7 @@ struct Entry {
     value: Value,
 }
 
-struct Table {
+pub struct Table {
     count: usize,
     capacity: usize,
     entries: *mut Entry,
@@ -19,7 +19,7 @@ struct Table {
 impl Table {
     const MAX_LOAD: f32 = 0.75;
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         Table {
             count: 0,
             capacity: 0,
@@ -27,7 +27,7 @@ impl Table {
         }
     }
 
-    fn set(&mut self, key: GcRef<LoxString>, value: Value) -> bool {
+    pub fn set(&mut self, key: GcRef<LoxString>, value: Value) -> bool {
         unsafe {
             if self.count + 1 > (self.capacity as f32 * Table::MAX_LOAD) as usize {
                 let capacity = if self.capacity < 8 {
@@ -50,20 +50,21 @@ impl Table {
         }
     }
 
-    fn get(&self, key: GcRef<LoxString>) -> Option<Value> {
+    pub fn get(&self, key: GcRef<LoxString>) -> Option<Value> {
         unsafe {
             if self.count == 0 {
                 return None;
             }
             let entry = Table::find_entry(self.entries, self.capacity, key);
             if (*entry).key.is_none() {
-                return None;
+                None
+            } else {
+                Some((*entry).value)
             }
-            return Some((*entry).value);
         }
     }
 
-    fn delete(&mut self, key: GcRef<LoxString>) -> bool {
+    pub fn delete(&mut self, key: GcRef<LoxString>) -> bool {
         unsafe {
             if self.count == 0 {
                 return false;
@@ -78,14 +79,14 @@ impl Table {
         }
     }
 
-    fn iter(&self) -> IterTable {
+    pub fn iter(&self) -> IterTable {
         IterTable {
             ptr: self.entries,
-            end: unsafe { self.entries.offset(self.capacity as isize) },
+            end: unsafe { self.entries.add(self.capacity) },
         }
     }
 
-    fn add_all(&mut self, other: &Table) {
+    pub fn add_all(&mut self, other: &Table) {
         unsafe {
             for i in 0..(other.capacity as isize) {
                 let entry = other.entries.offset(i);
@@ -96,14 +97,14 @@ impl Table {
         }
     }
 
-    fn find_string(&self, s: &str, hash: usize) -> Option<GcRef<LoxString>> {
+    pub fn find_string(&self, s: &str, hash: usize) -> Option<GcRef<LoxString>> {
         unsafe {
             if self.count == 0 {
                 return None;
             }
             let mut index = hash & (self.capacity - 1);
             loop {
-                let entry = self.entries.offset(index as isize);
+                let entry = self.entries.add(index);
                 match (*entry).key {
                     Some(key) => {
                         if s == key.s {
@@ -129,7 +130,7 @@ impl Table {
         let mut index = key.hash & (capacity - 1);
         let mut tombstone: *mut Entry = null_mut();
         loop {
-            let entry = entries.offset(index as isize);
+            let entry = entries.add(index);
             match (*entry).key {
                 Some(k) => {
                     if k == key {
@@ -197,21 +198,21 @@ impl Drop for Table {
     }
 }
 
-struct IterTable {
+pub struct IterTable {
     ptr: *mut Entry,
     end: *const Entry,
 }
 
 impl Iterator for IterTable {
-    type Item = &'static Entry;
+    type Item = (GcRef<LoxString>, Value);
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.ptr as *const Entry != self.end {
             unsafe {
                 let entry = self.ptr;
                 self.ptr = self.ptr.offset(1);
-                if (*entry).key.is_some() {
-                    return Some(&*entry);
+                if let Some(key) = (*entry).key {
+                    return Some((key, (*entry).value));
                 }
             }
         }
@@ -232,7 +233,7 @@ mod tests {
     fn basic() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let foo = gc.alloc(LoxString::new("foo"));
+        let foo = gc.alloc(LoxString::from_string("foo".to_owned()));
 
         table.set(foo, Value::Number(10f64));
 
@@ -242,7 +243,7 @@ mod tests {
             panic!("No value")
         }
 
-        let bar = gc.alloc(LoxString::new("bar"));
+        let bar = gc.alloc(LoxString::from_string("bar".to_owned()));
         assert!(matches!(table.get(bar), None));
 
         table.set(bar, Value::Bool(false));
@@ -253,7 +254,7 @@ mod tests {
     fn delete() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let foo = gc.alloc(LoxString::new("foo"));
+        let foo = gc.alloc(LoxString::from_string("foo".to_owned()));
         table.set(foo, Value::Bool(true));
         assert!(matches!(table.get(foo), Some(Value::Bool(true))));
         table.delete(foo);
@@ -264,7 +265,7 @@ mod tests {
     fn set_twice() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let foo = gc.alloc(LoxString::new("foo"));
+        let foo = gc.alloc(LoxString::from_string("foo".to_owned()));
         table.set(foo, Value::Bool(true));
         assert!(matches!(table.get(foo), Some(Value::Bool(true))));
         table.set(foo, Value::Nil);
@@ -276,7 +277,7 @@ mod tests {
         let mut gc = Gc::new();
         let mut table = Table::new();
         let mut keys: Vec<GcRef<LoxString>> = (0..64)
-            .map(|i| gc.alloc(LoxString::new(&format!("key {}", i))))
+            .map(|i| gc.alloc(LoxString::from_string(format!("key {}", i))))
             .collect();
 
         for (i, &key) in keys.iter().enumerate() {
@@ -297,7 +298,7 @@ mod tests {
         let mut gc = Gc::new();
         let mut table = Table::new();
         let mut keys: Vec<GcRef<LoxString>> = (0..64)
-            .map(|i| gc.alloc(LoxString::new(&format!("key {}", i))))
+            .map(|i| gc.alloc(LoxString::from_string(format!("key {}", i))))
             .collect();
 
         for (i, &key) in keys.iter().enumerate() {
@@ -322,7 +323,7 @@ mod tests {
         {
             for i in 0..100 {
                 let mut table = Table::new();
-                let key = gc.alloc(LoxString::new(&format!("key {}", i)));
+                let key = gc.alloc(LoxString::from_string(format!("key {}", i)));
                 table.set(key, Value::Bool(true));
             }
         }
@@ -332,7 +333,7 @@ mod tests {
     fn find_string() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let foo = gc.alloc(LoxString::new("foo"));
+        let foo = gc.alloc(LoxString::from_string("foo".to_owned()));
         assert!(table.find_string(&foo.s, foo.hash).is_none());
         table.set(foo, Value::Nil);
         assert!(matches!(table.find_string(&foo.s, foo.hash), Some(foo)));
@@ -344,14 +345,14 @@ mod tests {
         let mut table = Table::new();
 
         for i in 0..32 {
-            let k = gc.alloc(LoxString::new(&format!("{}", i)));
+            let k = gc.alloc(LoxString::from_string(format!("{}", i)));
             table.set(k, Value::Number(i as f64));
         }
 
         let mut numbers: HashSet<isize> = (0..32).collect();
 
-        for entry in table.iter() {
-            if let Value::Number(x) = entry.value {
+        for (key, value) in table.iter() {
+            if let Value::Number(x) = value {
                 numbers.remove(&(x as isize));
             } else {
                 panic!("No value")

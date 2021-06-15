@@ -5,16 +5,15 @@ use std::{
 };
 
 use crate::{
-    chunk::Chunk,
-    chunk::{Table, Value},
+    chunk::{Chunk, Value},
     gc::{GcObject, GcRef},
+    table::Table,
     vm::Vm,
 };
 
 pub enum ObjectType {
     Function(Function),
     Closure(Closure),
-    String(String),
     LoxString(LoxString),
     Upvalue(Upvalue),
     Class(Class),
@@ -27,11 +26,9 @@ pub struct LoxString {
 }
 
 impl LoxString {
-    pub fn new(s: &str) -> Self {
-        LoxString {
-            s: s.to_owned(),
-            hash: LoxString::hash_string(s),
-        }
+    pub fn from_string(s: String) -> Self {
+        let hash = LoxString::hash_string(&s);
+        LoxString { s, hash }
     }
 
     fn hash_string(s: &str) -> usize {
@@ -70,26 +67,6 @@ impl Display for LoxString {
     }
 }
 
-impl GcObject for String {
-    fn into_object(self) -> ObjectType {
-        ObjectType::String(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::String(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::String(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-}
-
 impl Display for ObjectType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -98,7 +75,6 @@ impl Display for ObjectType {
             ObjectType::Closure(value) => write!(f, "{}", value.function.deref()),
             ObjectType::Function(value) => write!(f, "{}", value.name.deref()),
             ObjectType::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
-            ObjectType::String(value) => write!(f, "{}", value.deref()),
             ObjectType::LoxString(value) => write!(f, "{}", value.deref()),
             ObjectType::Upvalue(_) => write!(f, "upvalue"),
         }
@@ -129,12 +105,12 @@ pub struct FunctionUpvalue {
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
-    pub name: GcRef<String>,
+    pub name: GcRef<LoxString>,
     pub upvalues: Vec<FunctionUpvalue>,
 }
 
 impl Function {
-    pub fn new(name: GcRef<String>) -> Self {
+    pub fn new(name: GcRef<LoxString>) -> Self {
         Self {
             arity: 0,
             chunk: Chunk::new(),
@@ -146,7 +122,7 @@ impl Function {
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.name.deref() == "script" {
+        if self.name.deref().s == "script" {
             write!(f, "<script>")
         } else {
             write!(f, "<fn {}>", self.name.deref())
@@ -243,15 +219,15 @@ impl GcObject for Closure {
 }
 
 pub struct Class {
-    pub name: GcRef<String>,
+    pub name: GcRef<LoxString>,
     pub methods: Table,
 }
 
 impl Class {
-    pub fn new(name: GcRef<String>) -> Self {
+    pub fn new(name: GcRef<LoxString>) -> Self {
         Class {
             name,
-            methods: Table::default(),
+            methods: Table::new(),
         }
     }
 }
@@ -285,7 +261,7 @@ impl Instance {
     pub fn new(class: GcRef<Class>) -> Self {
         Instance {
             class,
-            fields: Table::default(),
+            fields: Table::new(),
         }
     }
 }

@@ -4,8 +4,8 @@ use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
     gc::{Gc, GcRef},
-    objects::Function,
     objects::FunctionUpvalue,
+    objects::{Function, LoxString},
     scanner::{Scanner, Token, TokenType},
 };
 use std::{convert::TryFrom, mem};
@@ -102,7 +102,7 @@ struct Compiler<'sourcecode> {
 impl<'sourcecode> Compiler<'sourcecode> {
     const LOCAL_COUNT: usize = std::u8::MAX as usize + 1;
 
-    fn new(function_name: GcRef<String>, kind: FunctionType) -> Box<Self> {
+    fn new(function_name: GcRef<LoxString>, kind: FunctionType) -> Box<Self> {
         let mut compiler = Compiler {
             enclosing: None,
             function: Function::new(function_name),

@@ -1,11 +1,12 @@
 use cpu_time::ProcessTime;
 
 use crate::{
-    chunk::{Instruction, Table, Value},
+    chunk::{Instruction, Value},
     compiler::compile,
     error::LoxError,
     gc::{Gc, GcObject, GcRef},
-    objects::{BoundMethod, Class, Closure, Instance, NativeFunction, Upvalue},
+    objects::{BoundMethod, Class, Closure, Instance, LoxString, NativeFunction, Upvalue},
+    table::Table,
 };
 use std::{
     ops::Deref,
@@ -20,7 +21,7 @@ pub struct Vm {
     stack_top: *mut Value,
     globals: Table,
     open_upvalues: Vec<GcRef<Upvalue>>,
-    init_string: GcRef<String>,
+    init_string: GcRef<LoxString>,
     start_time: ProcessTime,
 }
 
@@ -42,7 +43,7 @@ impl Vm {
             frame_count: 0,
             stack: [Value::Nil; Vm::STACK_SIZE],
             stack_top: null_mut(),
-            globals: Table::default(),
+            globals: Table::new(),
             open_upvalues: Vec::with_capacity(Vm::STACK_SIZE),
             init_string,
             start_time: ProcessTime::now(),
@@ -99,7 +100,7 @@ impl Vm {
 
     fn define_native(&mut self, name: &str, native: NativeFunction) {
         let name = self.gc.intern(name.to_owned());
-        self.globals.insert(name, Value::NativeFunction(native));
+        self.globals.set(name, Value::NativeFunction(native));
     }
 
     fn runtime_error(&self, msg: &str) -> Result<(), LoxError> {
@@ -209,7 +210,7 @@ impl Vm {
                 Instruction::DefineGlobal(constant) => {
                     let global_name = current_chunk.read_string(constant);
                     let value = self.pop();
-                    self.globals.insert(global_name, value);
+                    self.globals.set(global_name, value);
                 }
                 Instruction::Divide => self.binary_op(|a, b| a / b, Value::Number)?,
                 Instruction::Equal => {
@@ -220,8 +221,8 @@ impl Vm {
                 Instruction::False => self.push(Value::Bool(false)),
                 Instruction::GetGlobal(constant) => {
                     let global_name = current_chunk.read_string(constant);
-                    match self.globals.get(&global_name) {
-                        Some(&value) => self.push(value),
+                    match self.globals.get(global_name) {
+                        Some(value) => self.push(value),
                         None => {
                             let msg = format!("Undefined variable '{}'.", global_name.deref());
                             return self.runtime_error(&msg);
@@ -237,9 +238,9 @@ impl Vm {
                     if let Value::Instance(instance) = self.peek(0) {
                         let class = instance.class;
                         let property_name = current_chunk.read_string(constant);
-                        let value = instance.fields.get(&property_name);
+                        let value = instance.fields.get(property_name);
                         match value {
-                            Some(&value) => {
+                            Some(value) => {
                                 self.pop();
                                 self.push(value);
                             }
@@ -274,8 +275,8 @@ impl Vm {
                 Instruction::Inherit => {
                     let pair = (self.peek(0), self.peek(1));
                     if let (Value::Class(mut subclass), Value::Class(superclass)) = pair {
-                        let methods = superclass.methods.clone();
-                        subclass.methods = methods;
+                        subclass.methods = Table::new();
+                        subclass.methods.add_all(&superclass.methods);
                         self.pop();
                     } else {
                         return self.runtime_error("Superclass must be a class.");
@@ -344,8 +345,8 @@ impl Vm {
                 Instruction::SetGlobal(constant) => {
                     let global_name = current_chunk.read_string(constant);
                     let value = self.peek(0);
-                    if self.globals.insert(global_name, value).is_none() {
-                        self.globals.remove(&global_name);
+                    if self.globals.set(global_name, value) {
+                        self.globals.delete(global_name);
                         let msg = format!("Undefined variable '{}'.", global_name.deref());
                         return self.runtime_error(&msg);
                     }
@@ -359,7 +360,7 @@ impl Vm {
                     if let Value::Instance(mut instance) = self.peek(1) {
                         let property_name = current_chunk.read_string(constant);
                         let value = self.pop();
-                        instance.fields.insert(property_name, value);
+                        instance.fields.set(property_name, value);
                         self.pop();
                         self.push(value);
                     } else {
@@ -405,7 +406,7 @@ impl Vm {
                 let instance = Instance::new(class);
                 let instance = self.alloc(instance);
                 self.set_at(arg_count, Value::Instance(instance));
-                if let Some(&initializer) = class.methods.get(&self.init_string) {
+                if let Some(initializer) = class.methods.get(self.init_string) {
                     if let Value::Closure(initializer) = initializer {
                         return self.call(initializer, arg_count);
                     }
@@ -446,10 +447,10 @@ impl Vm {
         }
     }
 
-    fn invoke(&mut self, name: GcRef<String>, arg_count: usize) -> Result<(), LoxError> {
+    fn invoke(&mut self, name: GcRef<LoxString>, arg_count: usize) -> Result<(), LoxError> {
         let receiver = self.peek(arg_count);
         if let Value::Instance(instance) = receiver {
-            if let Some(&field) = instance.fields.get(&name) {
+            if let Some(field) = instance.fields.get(name) {
                 self.set_at(arg_count, field);
                 self.call_value(arg_count)
             } else {
@@ -464,10 +465,10 @@ impl Vm {
     fn invoke_from_class(
         &mut self,
         class: GcRef<Class>,
-        name: GcRef<String>,
+        name: GcRef<LoxString>,
         arg_count: usize,
     ) -> Result<(), LoxError> {
-        if let Some(&method) = class.methods.get(&name) {
+        if let Some(method) = class.methods.get(name) {
             if let Value::Closure(closure) = method {
                 self.call(closure, arg_count)
             } else {
@@ -479,11 +480,11 @@ impl Vm {
         }
     }
 
-    fn bind_method(&mut self, class: GcRef<Class>, name: GcRef<String>) -> Result<(), LoxError> {
-        if let Some(method) = class.methods.get(&name) {
+    fn bind_method(&mut self, class: GcRef<Class>, name: GcRef<LoxString>) -> Result<(), LoxError> {
+        if let Some(method) = class.methods.get(name) {
             let receiver = self.peek(0);
             let method = match method {
-                Value::Closure(closure) => *closure,
+                Value::Closure(closure) => closure,
                 _ => panic!("Inconsistent state. Method is not closure"),
             };
             let bound = BoundMethod::new(receiver, method);
@@ -523,10 +524,10 @@ impl Vm {
         }
     }
 
-    fn define_method(&mut self, name: GcRef<String>) {
+    fn define_method(&mut self, name: GcRef<LoxString>) {
         let method = self.peek(0);
         if let Value::Class(mut class) = self.peek(1) {
-            class.methods.insert(name, method);
+            class.methods.set(name, method);
             self.pop();
         } else {
             panic!("Invalid state: trying to define a method of non class");
@@ -538,7 +539,7 @@ impl Vm {
         self.gc.alloc(object)
     }
 
-    fn intern(&mut self, name: String) -> GcRef<String> {
+    fn intern(&mut self, name: String) -> GcRef<LoxString> {
         self.mark_and_sweep();
         self.gc.intern(name)
     }

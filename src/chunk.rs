@@ -1,8 +1,6 @@
-use fxhash::FxHashMap;
-
 use crate::{
     gc::GcRef,
-    objects::{BoundMethod, Class, Closure, Function, Instance, NativeFunction},
+    objects::{BoundMethod, Class, Closure, Function, Instance, LoxString, NativeFunction},
 };
 use std::{
     fmt::{self, Display},
@@ -20,7 +18,7 @@ pub enum Value {
     NativeFunction(NativeFunction),
     Nil,
     Number(f64),
-    String(GcRef<String>),
+    String(GcRef<LoxString>),
 }
 
 impl Value {
@@ -56,8 +54,6 @@ impl Display for Value {
         }
     }
 }
-
-pub type Table = FxHashMap<GcRef<String>, Value>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Instruction {
@@ -129,7 +125,7 @@ impl Chunk {
         self.constants[index as usize]
     }
 
-    pub fn read_string(&self, index: u8) -> GcRef<String> {
+    pub fn read_string(&self, index: u8) -> GcRef<LoxString> {
         if let Value::String(s) = self.read_constant(index) {
             s
         } else {

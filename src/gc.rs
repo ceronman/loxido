@@ -8,12 +8,9 @@ use std::{
     usize,
 };
 
-use fxhash::FxHashMap;
-
-use crate::{
-    chunk::{Table, Value},
-    objects::ObjectType,
-};
+use crate::objects::LoxString;
+use crate::table::Table;
+use crate::{chunk::Value, objects::ObjectType};
 
 struct GcHeader {
     marked: bool,
@@ -70,7 +67,7 @@ impl<T> PartialEq for GcRef<T> {
     }
 }
 
-impl hash::Hash for GcRef<String> {
+impl hash::Hash for GcRef<LoxString> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.header.hash(state)
     }
@@ -85,7 +82,7 @@ fn short_type_name<T: std::any::Any>() -> &'static str {
 pub struct Gc {
     next_gc: usize,
     first: Option<NonNull<GcHeader>>,
-    strings: FxHashMap<&'static str, GcRef<String>>,
+    strings: Table,
     grey_stack: Vec<NonNull<GcHeader>>,
 }
 
@@ -96,7 +93,7 @@ impl Gc {
         Gc {
             next_gc: 1024 * 1024,
             first: None,
-            strings: FxHashMap::default(),
+            strings: Table::new(),
             grey_stack: Vec::new(),
         }
     }
@@ -134,13 +131,13 @@ impl Gc {
         }
     }
 
-    pub fn intern(&mut self, s: String) -> GcRef<String> {
-        if let Some(&value) = self.strings.get(&s as &str) {
+    pub fn intern(&mut self, s: String) -> GcRef<LoxString> {
+        let ls = LoxString::from_string(s);
+        if let Some(value) = self.strings.find_string(&ls.s, ls.hash) {
             value
         } else {
-            let reference = self.alloc(s);
-            let key = unsafe { &*(reference.deref() as *const String) };
-            self.strings.insert(key, reference);
+            let reference = self.alloc(ls);
+            self.strings.set(reference, Value::Nil);
             reference
         }
     }
@@ -188,7 +185,6 @@ impl Gc {
                     self.mark_object(upvalue);
                 }
             }
-            ObjectType::String(_) => {}
             ObjectType::LoxString(_) => {}
             ObjectType::Upvalue(upvalue) => {
                 if let Some(obj) = upvalue.closed {
@@ -237,7 +233,7 @@ impl Gc {
     }
 
     pub fn mark_table(&mut self, table: &Table) {
-        for (&k, &v) in table {
+        for (k, v) in table.iter() {
             self.mark_object(k);
             self.mark_value(v);
         }
@@ -278,8 +274,11 @@ impl Gc {
     }
 
     fn remove_white_strings(&mut self) {
-        self.strings
-            .retain(|_k, v| unsafe { v.header.as_ref().marked });
+        for (k, _v) in self.strings.iter() {
+            if unsafe { !k.header.as_ref().marked } {
+                self.strings.delete(k);
+            }
+        }
     }
 }
 
