@@ -276,7 +276,7 @@ mod tests {
     fn grow() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let mut keys: Vec<GcRef<LoxString>> = (0..64)
+        let keys: Vec<GcRef<LoxString>> = (0..64)
             .map(|i| gc.alloc(LoxString::from_string(format!("key {}", i))))
             .collect();
 
@@ -297,7 +297,7 @@ mod tests {
     fn add_all() {
         let mut gc = Gc::new();
         let mut table = Table::new();
-        let mut keys: Vec<GcRef<LoxString>> = (0..64)
+        let keys: Vec<GcRef<LoxString>> = (0..64)
             .map(|i| gc.alloc(LoxString::from_string(format!("key {}", i))))
             .collect();
 
@@ -336,7 +336,7 @@ mod tests {
         let foo = gc.alloc(LoxString::from_string("foo".to_owned()));
         assert!(table.find_string(&foo.s, foo.hash).is_none());
         table.set(foo, Value::Nil);
-        assert!(matches!(table.find_string(&foo.s, foo.hash), Some(foo)));
+        assert!(matches!(table.find_string(&foo.s, foo.hash), Some(_)));
     }
 
     #[test]
@@ -351,7 +351,7 @@ mod tests {
 
         let mut numbers: HashSet<isize> = (0..32).collect();
 
-        for (key, value) in table.iter() {
+        for (_key, value) in table.iter() {
             if let Value::Number(x) = value {
                 numbers.remove(&(x as isize));
             } else {
