@@ -110,7 +110,6 @@ impl Vm {
         Err(LoxError::RuntimeError)
     }
 
-    // PERF: Investigate macros for this
     fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, r: fn(T) -> Value) -> Result<(), LoxError> {
         let operands = (self.pop(), self.pop());
         match operands {
