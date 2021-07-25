@@ -8,7 +8,11 @@ This is based on the [clox reference
 implementation](https://github.com/munificent/craftinginterpreters) in C. It
 implements a byte-code compiler and VM.
 
-It passes the 243 integration tests from *clox* and *jlox*.
+You can read a detailed blog post about this here:
+
+https://ceronman.com/2021/07/22/my-experience-crafting-an-interpreter-with-rust/
+
+This implementation passes the 243 integration tests from *clox* and *jlox*.
 
 ## Two branches
 
