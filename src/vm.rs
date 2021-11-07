@@ -419,7 +419,7 @@ impl Vm {
             Value::Closure(closure) => self.call(closure, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack_len() - arg_count;
-                let result = native.0(&self, &self.stack[left..]);
+                let result = native.0(self, &self.stack[left..]);
                 self.stack_truncate(left - 1);
                 self.push(result);
                 Ok(())

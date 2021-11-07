@@ -2,7 +2,7 @@
 name = "loxido"
 version = "0.1.0"
 authors = ["Manuel Cerón <ceronman@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [profile.release]
 debug = true

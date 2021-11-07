@@ -42,14 +42,7 @@ impl Display for Value {
             Value::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
             Value::NativeFunction(_) => write!(f, "<native fn>"),
             Value::Nil => write!(f, "nil"),
-            Value::Number(value) => {
-                // Hack to be able to print -0.0 as -0. Check https://github.com/rust-lang/rfcs/issues/1074
-                if *value == 0.0f64 && value.is_sign_negative() {
-                    write!(f, "-{}", value)
-                } else {
-                    write!(f, "{}", value)
-                }
-            }
+            Value::Number(value) => write!(f, "{}", value),
             Value::String(value) => write!(f, "{}", value.deref()),
         }
     }
