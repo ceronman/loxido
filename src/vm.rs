@@ -114,8 +114,7 @@ impl Vm {
     // PERF: Investigate unsafe
     fn current_closure(&self) -> &Closure {
         let closure = self.current_frame().closure;
-        let closure = self.gc.deref(closure);
-        &closure
+        self.gc.deref(closure)
     }
 
     fn run(&mut self) -> Result<(), LoxError> {
@@ -413,7 +412,7 @@ impl Vm {
             Value::Closure(closure) => self.call(closure, arg_count),
             Value::NativeFunction(native) => {
                 let left = self.stack.len() - arg_count;
-                let result = native.0(&self, &self.stack[left..]);
+                let result = native.0(self, &self.stack[left..]);
                 self.stack.truncate(left - 1);
                 self.push(result);
                 Ok(())
