@@ -19,4 +19,4 @@ for benchmark in sorted(pathlib.Path(BENCHMARK_DIR).glob("*.lox")):
         output = subprocess.check_output([str(lox), str(benchmark.resolve())])
         times.append(float(output.splitlines()[-1]))
         time.sleep(2)
-    print(f"{benchmark.name}: {min(times)}")
+    print(f"{benchmark.name}: {round(min(times), 4)}")
