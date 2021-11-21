@@ -1,5 +1,3 @@
-use fxhash::FxHashMap;
-
 use crate::{
     chunk::{Instruction, Value},
     error::LoxError,
@@ -8,7 +6,7 @@ use crate::{
     objects::{Function, LoxString},
     scanner::{Scanner, Token, TokenType},
 };
-use std::{convert::TryFrom, mem};
+use std::{collections::HashMap, convert::TryFrom, mem};
 
 #[derive(Copy, Clone, PartialOrd, PartialEq)]
 enum Precedence {
@@ -199,12 +197,12 @@ struct Parser<'sourcecode> {
     had_error: bool,
     panic_mode: bool,
     resolver_errors: Vec<&'static str>,
-    rules: FxHashMap<TokenType, ParseRule<'sourcecode>>,
+    rules: HashMap<TokenType, ParseRule<'sourcecode>>,
 }
 
 impl<'sourcecode> Parser<'sourcecode> {
     fn new(code: &'sourcecode str, gc: &'sourcecode mut Gc) -> Parser<'sourcecode> {
-        let mut rules = FxHashMap::default();
+        let mut rules = HashMap::new();
 
         let mut rule = |kind, prefix, infix, precedence| {
             rules.insert(kind, ParseRule::new(prefix, infix, precedence));

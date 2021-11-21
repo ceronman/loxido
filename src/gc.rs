@@ -2,7 +2,6 @@ use std::fmt::Display;
 use std::ptr::NonNull;
 use std::{alloc, mem};
 use std::{
-    hash,
     ops::{Deref, DerefMut},
     sync::atomic::AtomicUsize,
     usize,
@@ -68,12 +67,6 @@ impl<T> Eq for GcRef<T> {}
 impl<T> PartialEq for GcRef<T> {
     fn eq(&self, other: &Self) -> bool {
         self.pointer == other.pointer
-    }
-}
-
-impl hash::Hash for GcRef<LoxString> {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.pointer.hash(state)
     }
 }
 
@@ -305,11 +298,11 @@ unsafe impl alloc::GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
         self.bytes_allocated
             .fetch_add(layout.size(), std::sync::atomic::Ordering::Relaxed);
-        alloc::System.alloc(layout)
+            mimalloc::MiMalloc.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: alloc::Layout) {
-        alloc::System.dealloc(ptr, layout);
+        mimalloc::MiMalloc.dealloc(ptr, layout);
         self.bytes_allocated
             .fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
     }

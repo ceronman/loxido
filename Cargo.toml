@@ -15,9 +15,9 @@ debug_stress_gc = []
 debug_trace_execution = []
 
 [dependencies]
-fxhash = "0.2.1"
 cpu-time = "1.0.0"
+mimalloc = { version = "0.1.27", default-features = false }
 
 [dev-dependencies]
-regex = "1.4.5"
+regex = "1.5.4"
 test-generator = "0.3.0"
