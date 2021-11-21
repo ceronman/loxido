@@ -4,11 +4,12 @@ use crate::{
     chunk::{Instruction, Value},
     compiler::compile,
     error::LoxError,
-    gc::{Gc, GcObject, GcRef},
+    gc::{Gc, GcRef},
     objects::{BoundMethod, Class, Closure, Instance, LoxString, NativeFunction, Upvalue},
     table::Table,
 };
 use std::{
+    fmt::Display,
     ops::Deref,
     ptr::{null, null_mut},
 };
@@ -533,7 +534,7 @@ impl Vm {
         }
     }
 
-    fn alloc<T: GcObject + 'static>(&mut self, object: T) -> GcRef<T> {
+    fn alloc<T: Display + 'static>(&mut self, object: T) -> GcRef<T> {
         self.mark_and_sweep();
         self.gc.alloc(object)
     }

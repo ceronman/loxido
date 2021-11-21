@@ -1,6 +1,5 @@
 use std::{
     fmt::{self, Debug, Display},
-    hint::unreachable_unchecked,
     ops::Deref,
 };
 
@@ -11,16 +10,20 @@ use crate::{
     vm::Vm,
 };
 
+#[derive(Debug)]
 pub enum ObjectType {
-    Function(Function),
-    Closure(Closure),
-    LoxString(LoxString),
-    Upvalue(Upvalue),
-    Class(Class),
-    Instance(Instance),
-    BoundMethod(BoundMethod),
+    Function,
+    Closure,
+    LoxString,
+    Upvalue,
+    Class,
+    Instance,
+    BoundMethod,
 }
+
+#[repr(C)]
 pub struct LoxString {
+    pub header: GcObject,
     pub s: String,
     pub hash: usize,
 }
@@ -28,7 +31,11 @@ pub struct LoxString {
 impl LoxString {
     pub fn from_string(s: String) -> Self {
         let hash = LoxString::hash_string(&s);
-        LoxString { s, hash }
+        LoxString {
+            header: GcObject::new(ObjectType::LoxString),
+            s,
+            hash,
+        }
     }
 
     fn hash_string(s: &str) -> usize {
@@ -41,43 +48,9 @@ impl LoxString {
     }
 }
 
-impl GcObject for LoxString {
-    fn into_object(self) -> ObjectType {
-        ObjectType::LoxString(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::LoxString(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::LoxString(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-}
-
 impl Display for LoxString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.s)
-    }
-}
-
-impl Display for ObjectType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ObjectType::BoundMethod(value) => write!(f, "{}", value.method.function.deref()),
-            ObjectType::Class(value) => write!(f, "{}", value.name.deref()),
-            ObjectType::Closure(value) => write!(f, "{}", value.function.deref()),
-            ObjectType::Function(value) => write!(f, "{}", value.name.deref()),
-            ObjectType::Instance(value) => write!(f, "{} instance", value.class.name.deref()),
-            ObjectType::LoxString(value) => write!(f, "{}", value.deref()),
-            ObjectType::Upvalue(_) => write!(f, "upvalue"),
-        }
     }
 }
 
@@ -102,7 +75,9 @@ pub struct FunctionUpvalue {
     pub is_local: bool,
 }
 
+#[repr(C)]
 pub struct Function {
+    pub header: GcObject,
     pub arity: usize,
     pub chunk: Chunk,
     pub name: GcRef<LoxString>,
@@ -112,6 +87,7 @@ pub struct Function {
 impl Function {
     pub fn new(name: GcRef<LoxString>) -> Self {
         Self {
+            header: GcObject::new(ObjectType::Function),
             arity: 0,
             chunk: Chunk::new(),
             name,
@@ -130,27 +106,9 @@ impl Display for Function {
     }
 }
 
-impl GcObject for Function {
-    fn into_object(self) -> ObjectType {
-        ObjectType::Function(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::Function(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::Function(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-}
-
+#[repr(C)]
 pub struct Upvalue {
+    pub header: GcObject,
     pub location: usize,
     pub closed: Option<Value>,
 }
@@ -158,33 +116,22 @@ pub struct Upvalue {
 impl Upvalue {
     pub fn new(location: usize) -> Self {
         Upvalue {
+            header: GcObject::new(ObjectType::Upvalue),
             location,
             closed: None,
         }
     }
 }
 
-impl GcObject for Upvalue {
-    fn into_object(self) -> ObjectType {
-        ObjectType::Upvalue(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::Upvalue(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::Upvalue(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
+impl Display for Upvalue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "upvalue")
     }
 }
 
+#[repr(C)]
 pub struct Closure {
+    pub header: GcObject,
     pub function: GcRef<Function>,
     pub upvalues: Vec<GcRef<Upvalue>>,
 }
@@ -192,33 +139,22 @@ pub struct Closure {
 impl Closure {
     pub fn new(function: GcRef<Function>) -> Self {
         Closure {
+            header: GcObject::new(ObjectType::Closure),
             function,
             upvalues: Vec::new(),
         }
     }
 }
 
-impl GcObject for Closure {
-    fn into_object(self) -> ObjectType {
-        ObjectType::Closure(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::Closure(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::Closure(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
+impl Display for Closure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.function.deref())
     }
 }
 
+#[repr(C)]
 pub struct Class {
+    pub header: GcObject,
     pub name: GcRef<LoxString>,
     pub methods: Table,
 }
@@ -226,33 +162,22 @@ pub struct Class {
 impl Class {
     pub fn new(name: GcRef<LoxString>) -> Self {
         Class {
+            header: GcObject::new(ObjectType::Class),
             name,
             methods: Table::new(),
         }
     }
 }
 
-impl GcObject for Class {
-    fn into_object(self) -> ObjectType {
-        ObjectType::Class(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::Class(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::Class(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
+impl Display for Class {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name.deref())
     }
 }
 
+#[repr(C)]
 pub struct Instance {
+    pub header: GcObject,
     pub class: GcRef<Class>,
     pub fields: Table,
 }
@@ -260,59 +185,38 @@ pub struct Instance {
 impl Instance {
     pub fn new(class: GcRef<Class>) -> Self {
         Instance {
+            header: GcObject::new(ObjectType::Instance),
             class,
             fields: Table::new(),
         }
     }
 }
 
-impl GcObject for Instance {
-    fn into_object(self) -> ObjectType {
-        ObjectType::Instance(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::Instance(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::Instance(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
+impl Display for Instance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.class.name.deref())
     }
 }
 
+#[repr(C)]
 pub struct BoundMethod {
+    pub header: GcObject,
     pub receiver: Value,
     pub method: GcRef<Closure>,
 }
 
 impl BoundMethod {
     pub fn new(receiver: Value, method: GcRef<Closure>) -> Self {
-        BoundMethod { receiver, method }
+        BoundMethod {
+            header: GcObject::new(ObjectType::BoundMethod),
+            receiver,
+            method,
+        }
     }
 }
 
-impl GcObject for BoundMethod {
-    fn into_object(self) -> ObjectType {
-        ObjectType::BoundMethod(self)
-    }
-
-    fn unwrap_ref(obj: &ObjectType) -> &Self {
-        match obj {
-            ObjectType::BoundMethod(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self {
-        match obj {
-            ObjectType::BoundMethod(f) => f,
-            _ => unsafe { unreachable_unchecked() },
-        }
+impl Display for BoundMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.method.function.deref())
     }
 }

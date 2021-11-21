@@ -1,53 +1,57 @@
-use std::alloc;
+use std::fmt::Display;
 use std::ptr::NonNull;
+use std::{alloc, mem};
 use std::{
     hash,
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::AtomicUsize,
     usize,
 };
 
-use crate::objects::LoxString;
+use crate::objects::{BoundMethod, Class, Closure, Function, Instance, LoxString, Upvalue};
 use crate::table::Table;
 use crate::{chunk::Value, objects::ObjectType};
 
-struct GcHeader {
+#[repr(C)]
+pub struct GcObject {
     marked: bool,
-    next: Option<NonNull<GcHeader>>,
-    object: ObjectType,
+    next: Option<NonNull<GcObject>>,
+    obj_type: ObjectType,
 }
-pub trait GcObject {
-    fn into_object(self) -> ObjectType;
-    fn unwrap_ref(obj: &ObjectType) -> &Self;
-    fn unwrap_mut(obj: &mut ObjectType) -> &mut Self;
+
+impl GcObject {
+    pub fn new(obj_type: ObjectType) -> Self {
+        Self {
+            marked: false,
+            next: None,
+            obj_type,
+        }
+    }
 }
 
 pub struct GcRef<T> {
-    header: NonNull<GcHeader>,
-    _marker: PhantomData<T>,
+    pointer: NonNull<T>,
 }
 
 impl<T> GcRef<T> {
     pub fn dangling() -> GcRef<T> {
         GcRef {
-            header: NonNull::dangling(),
-            _marker: PhantomData,
+            pointer: NonNull::dangling(),
         }
     }
 }
 
-impl<T: GcObject> Deref for GcRef<T> {
+impl<T> Deref for GcRef<T> {
     type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        unsafe { T::unwrap_ref(&self.header.as_ref().object) }
+    fn deref(&self) -> &T {
+        unsafe { self.pointer.as_ref() }
     }
 }
 
-impl<T: GcObject> DerefMut for GcRef<T> {
+impl<T> DerefMut for GcRef<T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { T::unwrap_mut(&mut self.header.as_mut().object) }
+        unsafe { self.pointer.as_mut() }
     }
 }
 
@@ -63,13 +67,13 @@ impl<T> Eq for GcRef<T> {}
 
 impl<T> PartialEq for GcRef<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.header == other.header
+        self.pointer == other.pointer
     }
 }
 
 impl hash::Hash for GcRef<LoxString> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.header.hash(state)
+        self.pointer.hash(state)
     }
 }
 
@@ -81,9 +85,9 @@ fn short_type_name<T: std::any::Any>() -> &'static str {
 
 pub struct Gc {
     next_gc: usize,
-    first: Option<NonNull<GcHeader>>,
+    first: Option<NonNull<GcObject>>,
     strings: Table,
-    grey_stack: Vec<NonNull<GcHeader>>,
+    grey_stack: Vec<NonNull<GcObject>>,
 }
 
 impl Gc {
@@ -98,20 +102,19 @@ impl Gc {
         }
     }
 
-    pub fn alloc<T: GcObject + 'static>(&mut self, object: T) -> GcRef<T> {
+    pub fn alloc<T: Display + 'static>(&mut self, object: T) -> GcRef<T> {
         unsafe {
-            let header = Box::new(GcHeader {
-                marked: false,
-                next: self.first.take(),
-                object: object.into_object(),
-            });
             #[cfg(feature = "debug_log_gc")]
-            let repr = format!("{}", header.object)
+            let repr = format!("{}", object)
                 .chars()
                 .into_iter()
                 .take(32)
                 .collect::<String>();
-            let header = NonNull::new_unchecked(Box::into_raw(header));
+
+            let boxed = Box::new(object);
+            let pointer = NonNull::new_unchecked(Box::into_raw(boxed));
+            let mut header: NonNull<GcObject> = mem::transmute(pointer.as_ref());
+            header.as_mut().next = self.first.take();
             self.first = Some(header);
 
             #[cfg(feature = "debug_log_gc")]
@@ -124,10 +127,7 @@ impl Gc {
                 self.next_gc,
             );
 
-            GcRef {
-                header,
-                _marker: PhantomData,
-            }
+            GcRef { pointer }
         }
     }
 
@@ -167,39 +167,45 @@ impl Gc {
         }
     }
 
-    fn blacken_object(&mut self, pointer: NonNull<GcHeader>) {
-        let object = unsafe { &pointer.as_ref().object };
+    fn blacken_object(&mut self, pointer: NonNull<GcObject>) {
+        let object_type = unsafe { &pointer.as_ref().obj_type };
         #[cfg(feature = "debug_log_gc")]
         println!("blacken(adr:{:?})", pointer);
 
-        match object {
-            ObjectType::Function(function) => {
+        match object_type {
+            ObjectType::Function => {
+                let function: &Function = unsafe { mem::transmute(pointer.as_ref()) };
                 self.mark_object(function.name);
                 for &constant in &function.chunk.constants {
                     self.mark_value(constant);
                 }
             }
-            ObjectType::Closure(closure) => {
+            ObjectType::Closure => {
+                let closure: &Closure = unsafe { mem::transmute(pointer.as_ref()) };
                 self.mark_object(closure.function);
                 for &upvalue in &closure.upvalues {
                     self.mark_object(upvalue);
                 }
             }
-            ObjectType::LoxString(_) => {}
-            ObjectType::Upvalue(upvalue) => {
+            ObjectType::LoxString => {}
+            ObjectType::Upvalue => {
+                let upvalue: &Upvalue = unsafe { mem::transmute(pointer.as_ref()) };
                 if let Some(obj) = upvalue.closed {
                     self.mark_value(obj)
                 }
             }
-            ObjectType::Class(class) => {
+            ObjectType::Class => {
+                let class: &Class = unsafe { mem::transmute(pointer.as_ref()) };
                 self.mark_object(class.name);
                 self.mark_table(&class.methods);
             }
-            ObjectType::Instance(instance) => {
+            ObjectType::Instance => {
+                let instance: &Instance = unsafe { mem::transmute(pointer.as_ref()) };
                 self.mark_object(instance.class);
                 self.mark_table(&instance.fields);
             }
-            ObjectType::BoundMethod(method) => {
+            ObjectType::BoundMethod => {
+                let method: &BoundMethod = unsafe { mem::transmute(pointer.as_ref()) };
                 self.mark_value(method.receiver);
                 self.mark_object(method.method);
             }
@@ -218,16 +224,17 @@ impl Gc {
         }
     }
 
-    pub fn mark_object<T: GcObject + 'static>(&mut self, mut reference: GcRef<T>) {
+    pub fn mark_object<T: 'static>(&mut self, mut reference: GcRef<T>) {
         unsafe {
-            reference.header.as_mut().marked = true;
-            self.grey_stack.push(reference.header);
+            let mut header: NonNull<GcObject> = mem::transmute(reference.pointer.as_mut());
+            header.as_mut().marked = true;
+            self.grey_stack.push(header);
+
             #[cfg(feature = "debug_log_gc")]
             println!(
-                "mark(adr:{:?}, type:{}, val:{})",
-                reference.header,
-                short_type_name::<T>(),
-                reference.header.as_ref().object
+                "mark(adr:{:?}, type:{:?})",
+                header,
+                header.as_ref().obj_type,
             );
         }
     }
@@ -250,8 +257,8 @@ impl Gc {
     }
 
     fn sweep(&mut self) {
-        let mut previous: Option<NonNull<GcHeader>> = None;
-        let mut current: Option<NonNull<GcHeader>> = self.first;
+        let mut previous: Option<NonNull<GcObject>> = None;
+        let mut current: Option<NonNull<GcObject>> = self.first;
         while let Some(mut object) = current {
             unsafe {
                 let object_ptr = object.as_mut();
@@ -266,7 +273,7 @@ impl Gc {
                         self.first = object_ptr.next
                     }
                     #[cfg(feature = "debug_log_gc")]
-                    println!("free(adr:{:?})", object_ptr as *mut GcHeader);
+                    println!("free(adr:{:?})", object_ptr as *mut GcObject);
                     Box::from_raw(object_ptr);
                 }
             }
@@ -275,7 +282,8 @@ impl Gc {
 
     fn remove_white_strings(&mut self) {
         for (k, _v) in self.strings.iter() {
-            if unsafe { !k.header.as_ref().marked } {
+            let header: &GcObject = unsafe { mem::transmute(k.pointer.as_ref()) };
+            if !header.marked {
                 self.strings.delete(k);
             }
         }
